@@ -13,6 +13,7 @@
 
   <properties>
     <kiji.schema.version>1.1.1</kiji.schema.version>
+    <fake-hbase.version>0.1.0</fake-hbase.version>
   </properties>
 
   <dependencies>
@@ -35,6 +36,22 @@
       <artifactId>hadoop-client</artifactId>
       <scope>provided</scope>
       <version>${hadoop.version}</version>
+    </dependency>
+
+    <!-- Testing Dependencies -->
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.kiji.testing</groupId>
+      <artifactId>fake-hbase</artifactId>
+      <version>${fake-hbase.version}</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
   <build>
