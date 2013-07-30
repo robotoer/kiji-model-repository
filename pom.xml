@@ -55,4 +55,23 @@
       </plugins>
     </pluginManagement>
   </build>
+
+  <repositories>
+    <repository>
+      <id>kiji-repos</id>
+      <name>kiji-repos</name>
+      <url>https://repo.wibidata.com/artifactory/kiji</url>
+    </repository>
+    <repository>
+      <id>kiji-nightly</id>
+      <name>kiji-nightly</name>
+      <url>https://repo.wibidata.com/artifactory/kiji-nightly</url>
+    </repository>
+  </repositories>
+
+  <scm>
+    <connection>scm:git:git@github.com:kijiproject/kiji-model-repository.git</connection>
+    <url>scm:git:git@github.com:kijiproject/kiji-model-repository.git</url>
+    <developerConnection>scm:git:git@github.com:kijiproject/kiji-model-repository.git</developerConnection>
+  </scm>
 </project>
