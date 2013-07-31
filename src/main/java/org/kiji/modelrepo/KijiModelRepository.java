@@ -20,13 +20,8 @@
 package org.kiji.modelrepo;
 
 import java.io.Closeable;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.ByteBuffer;
 
 import org.slf4j.Logger;
@@ -68,46 +63,37 @@ public final class KijiModelRepository implements Closeable {
    **/
   private static int mLatestLayoutVersion = 0;
 
-  /** The latest layout (by id) org.kiji.modelrepo.layouts/*.json. **/
+  /** The latest layout. **/
   private static KijiTableLayout mLatestLayout = null;
 
   private static final String REPO_VERSION_KEY = "kiji.model_repo.version";
   private static final String REPO_BASE_URL_KEY = "kiji.model_repo.base_repo_url";
 
+  private static final String REPO_LAYOUT_VERSION_PREFIX = "MR-";
+
   private static final Logger LOG = LoggerFactory.getLogger(KijiModelRepository.class);
+
+  /**
+   * The latest layout file. This will have to be updated when we make a change to the
+   * model repository table layout. Was hoping to inspect the contents of
+   * org.kiji.modelrepo.layouts/*.json but doing this in a jar doesn't seem very straightforward.
+   **/
+  private static final String LATEST_LAYOUT_FILE=
+      TABLE_LAYOUT_BASE_PKG + "/model-repo-layout-MR-1.json";
 
   static {
     /*
      * Go through all the JSON files in org/kiji/modelrepo/layouts and store each
      */
     try {
-      URL u = KijiModelRepository.class.getResource(TABLE_LAYOUT_BASE_PKG);
-      File f = new File(u.toURI());
-      for (File layoutFile : f.listFiles(new JsonFileFilter())) {
-        KijiTableLayout layout =
-            KijiTableLayout.createFromEffectiveJson(new FileInputStream(layoutFile));
-        int layoutId = Integer.parseInt(layout.getDesc().getLayoutId());
-        if (layoutId > mLatestLayoutVersion) {
-          mLatestLayoutVersion = layoutId;
-          mLatestLayout = layout;
-        }
-      }
+      mLatestLayout = KijiTableLayout
+          .createFromEffectiveJson(KijiModelRepository
+              .class.getResourceAsStream(LATEST_LAYOUT_FILE));
+      String tableLayoutId = mLatestLayout.getDesc().getLayoutId();
+      mLatestLayoutVersion = Integer.parseInt(tableLayoutId
+          .substring(REPO_LAYOUT_VERSION_PREFIX.length()));
     } catch (IOException ioe) {
       LOG.error("Error opening file ", ioe);
-    } catch (URISyntaxException use) {
-      LOG.error("Error opening file ", use);
-    }
-  }
-
-  /**
-   * Simple FileFilter that filters for JSON files.
-   *
-   */
-  private static class JsonFileFilter implements FilenameFilter {
-
-    @Override
-    public boolean accept(File dir, String name) {
-      return name.endsWith(".json");
     }
   }
 
@@ -179,6 +165,7 @@ public final class KijiModelRepository implements Closeable {
     if (!kiji.getTableNames().contains(MODEL_REPO_TABLE_NAME)) {
       TableLayoutDesc tableLayout = mLatestLayout.getDesc();
       tableLayout.setReferenceLayout(null);
+      tableLayout.setName(MODEL_REPO_TABLE_NAME);
       kiji.createTable(tableLayout);
 
       // Set the version
@@ -237,12 +224,14 @@ public final class KijiModelRepository implements Closeable {
     if (mLatestLayout == null) {
       throw new IOException("Unable to upgrade. Latest layout information is null.");
     }
-    // Apply the latest layout and set the reference layout to the previous version.
-    TableLayoutDesc newLayoutDesc = mLatestLayout.getDesc();
-
-    newLayoutDesc.setReferenceLayout(Integer.toString(fromVersion));
-    kiji.modifyTableLayout(newLayoutDesc);
-    writeLatestVersion(kiji.getMetaTable());
+    if (fromVersion != mLatestLayoutVersion) {
+      // Apply the latest layout and set the reference layout to the previous known version.
+      TableLayoutDesc newLayoutDesc = mLatestLayout.getDesc();
+      newLayoutDesc.setName(MODEL_REPO_TABLE_NAME);
+      newLayoutDesc.setReferenceLayout(REPO_LAYOUT_VERSION_PREFIX + Integer.toString(fromVersion));
+      kiji.modifyTableLayout(newLayoutDesc);
+      writeLatestVersion(kiji.getMetaTable());
+    }
   }
 
   /**
@@ -267,6 +256,7 @@ public final class KijiModelRepository implements Closeable {
 
   /**
    * Removes the model repository.
+   *
    * @param kiji is the instance in which the repo resides.
    */
   public static void remove(Kiji kiji) {
@@ -279,13 +269,28 @@ public final class KijiModelRepository implements Closeable {
    * @param kiji is the Kiji instance in which the model repository resides.
    * @return whether or not the model repository table is valid.
    * @throws IOException if there is an exception reading any information from the Kiji
-   *     instance or the metadata table.
+   *         instance or the metadata table.
    */
   private static boolean isModelRepoTable(Kiji kiji) throws IOException {
     // Checks the instance metadata table for the model repo keys and that the kiji instance has
     // a model repository.
-    return kiji.getMetaTable().getValue(MODEL_REPO_TABLE_NAME, REPO_BASE_URL_KEY) != null
-        && kiji.getMetaTable().getValue(MODEL_REPO_TABLE_NAME, REPO_VERSION_KEY) != null
-        && kiji.getTableNames().contains(MODEL_REPO_TABLE_NAME);
+    if (!kiji.getTableNames().contains(MODEL_REPO_TABLE_NAME)) {
+      return false;
+    }
+    try {
+      kiji.getMetaTable().getValue(MODEL_REPO_TABLE_NAME, REPO_BASE_URL_KEY);
+      kiji.getMetaTable().getValue(MODEL_REPO_TABLE_NAME, REPO_VERSION_KEY);
+      return true;
+    } catch (IOException ioe) {
+      // Means that the key doesn't exist (or something else bad happened).
+      // TODO: Once SCHEMA-507 is patched to return null on getValue() not existing, then
+      // we can change this OR if an exists() method is added on the MetaTable intf.
+      if (ioe.getMessage() != null
+          && ioe.getMessage().contains("Could not find any values associated with table")) {
+        return false;
+      } else {
+        throw ioe;
+      }
+    }
   }
 }
