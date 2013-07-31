@@ -35,6 +35,18 @@
       <artifactId>hadoop-core</artifactId>
       <scope>provided</scope>
       <version>${hadoop.version}</version>
+      <exclusions>
+        <!-- These were for some reason forcing out the newer org.codehaus.jackson which
+        is needed for JSON serialization in kiji-schema -->
+        <exclusion>
+          <groupId>org.codehaus.jackson</groupId>
+          <artifactId>jackson-mapper-asl</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.codehaus.jackson</groupId>
+          <artifactId>jackson-core-asl</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>

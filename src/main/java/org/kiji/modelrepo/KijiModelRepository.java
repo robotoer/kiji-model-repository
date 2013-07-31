@@ -83,7 +83,7 @@ public final class KijiModelRepository implements Closeable {
     try {
       URL u = KijiModelRepository.class.getResource(TABLE_LAYOUT_BASE_PKG);
       File f = new File(u.toURI());
-      for (String layoutFile : f.list(new JsonFileFilter())) {
+      for (File layoutFile : f.listFiles(new JsonFileFilter())) {
         KijiTableLayout layout =
             KijiTableLayout.createFromEffectiveJson(new FileInputStream(layoutFile));
         int layoutId = Integer.parseInt(layout.getDesc().getLayoutId());
