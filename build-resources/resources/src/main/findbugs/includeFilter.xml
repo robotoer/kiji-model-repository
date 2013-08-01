@@ -19,7 +19,7 @@
   -->
 <FindBugsFilter>
   <Match>
-    <!-- We only care about kiji-rest code. -->
-    <Package name="~org[.]kiji[.]rest[.].*" />
+    <!-- We only care about kiji-modelrepo code. -->
+    <Package name="~org[.]kiji[.]modelrepo[.].*" />
   </Match>
 </FindBugsFilter>

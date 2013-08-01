@@ -58,7 +58,9 @@ public class TestInitModelRepoTool extends KijiToolTest {
       runTool(new InitModelRepoTool(), kijiArg, baseRepoUrl);
       Assert.fail("Installation succeeded when it should have failed.");
     } catch (IOException ioe) {
+      //CSOFF: EmptyBlockCheck
     }
+    //CSON: EmptyBlockCheck
 
     Assert.assertTrue(localKiji.getTableNames()
         .contains(KijiModelRepository.MODEL_REPO_TABLE_NAME));
