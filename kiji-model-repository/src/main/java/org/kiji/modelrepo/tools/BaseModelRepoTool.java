@@ -21,6 +21,8 @@ package org.kiji.modelrepo.tools;
 
 import java.util.List;
 
+import com.google.common.collect.Lists;
+
 import org.kiji.schema.tools.BaseTool;
 
 /**
@@ -33,6 +35,8 @@ import org.kiji.schema.tools.BaseTool;
  *
  */
 public class BaseModelRepoTool extends BaseTool {
+
+  private List<String> mSubtoolArgs = Lists.newArrayList();
 
   @Override
   public final String getCategory() {
@@ -51,18 +55,27 @@ public class BaseModelRepoTool extends BaseTool {
 
   @Override
   protected final int run(List<String> toolArgs) throws Exception {
-    // Get the tool corresponding with the first argument in the list of non-tool args.
-    if (toolArgs.isEmpty()) {
-      printHelp();
-      return FAILURE;
-    }
     String subToolName = toolArgs.get(0);
     KijiModelRepoTool subTool = KijiModelRepoToolLauncher.getModelRepoTool(subToolName);
     if (subTool == null) {
-      System.out.println("Unknown tool " + subToolName);
+      getPrintStream().println("Unknown tool " + subToolName);
+      printHelp();
       return FAILURE;
     } else {
-      return subTool.toolMain(toolArgs.subList(0, toolArgs.size()));
+      return subTool.toolMain(mSubtoolArgs);
+    }
+  }
+
+  @Override
+  public int toolMain(List<String> args) throws Exception {
+    // The first argument is the name of the sub-tool to run and the
+    // remaining args will be passed into the sub-tool as its arguments.
+    if (args.isEmpty()) {
+      printHelp();
+      return FAILURE;
+    } else {
+      mSubtoolArgs = args.subList(1, args.size());
+      return super.toolMain(args.subList(0, 1));
     }
   }
 
@@ -73,9 +86,9 @@ public class BaseModelRepoTool extends BaseTool {
    *
    */
   private void printHelp() {
-    System.out.println("The list of available model repository tools:");
+    getPrintStream().println("The list of available model repository tools:");
     for (KijiModelRepoTool tool : KijiModelRepoToolLauncher.getModelRepoTools()) {
-      System.out.println(tool.getName() + " - " + tool.getDescription());
+      getPrintStream().println(tool.getName() + " - " + tool.getDescription());
     }
   }
 }

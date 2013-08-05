@@ -58,9 +58,9 @@ public class TestInitModelRepoTool extends KijiToolTest {
       runTool(new InitModelRepoTool(), kijiArg, baseRepoUrl);
       Assert.fail("Installation succeeded when it should have failed.");
     } catch (IOException ioe) {
-      //CSOFF: EmptyBlockCheck
+      // CSOFF: EmptyBlockCheck
     }
-    //CSON: EmptyBlockCheck
+    // CSON: EmptyBlockCheck
 
     Assert.assertTrue(localKiji.getTableNames()
         .contains(KijiModelRepository.MODEL_REPO_TABLE_NAME));
@@ -70,5 +70,23 @@ public class TestInitModelRepoTool extends KijiToolTest {
   public void testShouldWorkIfTryingToInstallTwice() throws Exception {
     testShouldInstallModelRepo();
     testShouldInstallModelRepo();
+  }
+
+  @Test
+  public void testShouldInstallModelRepoThroughSubTool() throws Exception {
+    final Kiji localKiji = getKiji();
+    final String baseRepoUrl = "http://someHost:1234/releases";
+    final String kijiArg = String.format("--kiji=%s", localKiji.getURI().toString());
+    final int returnCode = runTool(new BaseModelRepoTool(), "init", kijiArg, baseRepoUrl);
+    Assert.assertTrue(localKiji.getTableNames()
+        .contains(KijiModelRepository.MODEL_REPO_TABLE_NAME));
+    Assert.assertEquals(BaseTool.SUCCESS, returnCode);
+  }
+
+  @Test
+  public void testShouldFailWhenNoSubtoolSpecified() throws Exception {
+    final int returnCode = runTool(new BaseModelRepoTool());
+    Assert.assertEquals(BaseTool.FAILURE, returnCode);
+    Assert.assertEquals("The list of available model repository tools:", mToolOutputLines[0]);
   }
 }
