@@ -28,9 +28,14 @@
         "hash_size" : 2
       },
       "components" : [ {
-        "name" : "name",
+        "name" : "groupName",
         "type" : "STRING"
-      }, {
+      },
+      {
+        "name" : "artifactName",
+        "type" : "STRING"
+      },
+      {
         "name" : "version",
         "type" : "STRING"
       } ]

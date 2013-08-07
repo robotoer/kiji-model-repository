@@ -29,11 +29,13 @@ import java.util.Properties;
 import com.google.common.collect.Lists;
 
 import org.apache.maven.shared.invoker.DefaultInvocationRequest;
-import org.apache.maven.shared.invoker.DefaultInvoker;
 import org.apache.maven.shared.invoker.InvocationRequest;
 import org.apache.maven.shared.invoker.InvocationResult;
 import org.apache.maven.shared.invoker.Invoker;
 import org.apache.maven.shared.invoker.MavenInvocationException;
+
+import org.kiji.modelrepo.MavenUtils;
+
 
 /**
  * Resolves dependencies by using a Maven POM file. The dependency input is the
@@ -43,46 +45,8 @@ import org.apache.maven.shared.invoker.MavenInvocationException;
  */
 public class MavenDependencyResolver extends RawDependencyResolver {
 
-  private Invoker mMavenInvoker = new DefaultInvoker();
 
-  /**
-   * Constructs a new Maven based dependency resolver. If not set, will try to find the
-   * location of the mvn executable via the PATH environment variable. If this is not
-   * successful, an IllegalArgumentException will be thrown as this resolver won't work.
-   */
-  public MavenDependencyResolver() {
-    // Let's try and find the mvn binary on the PATH so that we don't get an exception
-    // by the invoker for not setting maven.home or M2_HOME variables.
-    File mavenHome = findMavenHome();
-    if (mavenHome != null) {
-      mMavenInvoker.setMavenHome(mavenHome);
-    }
-  }
-
-  /**
-   * Returns the first location (via the PATH variable) of the mvn executable or null
-   * if no such location exists.
-   *
-   * @return the first location (via the PATH variable) of the mvn executable or null if no such
-   *         location exists.
-   */
-  private File findMavenHome() {
-    final String pathEnv = System.getenv("PATH");
-    if (pathEnv != null) {
-      String[] pathParts = pathEnv.split(File.pathSeparator);
-      for (String path : pathParts) {
-        File possibleMvnPath = new File(path, "mvn");
-        if (possibleMvnPath.exists()) {
-          if (possibleMvnPath.getParentFile() != null) {
-            return possibleMvnPath.getParentFile().getParentFile();
-          } else {
-            return possibleMvnPath.getParentFile();
-          }
-        }
-      }
-    }
-    return null;
-  }
+  private Invoker mMavenInvoker = MavenUtils.getInvoker();
 
   @Override
   public List<File> resolveDependencies(String dependencyInput) throws IOException {

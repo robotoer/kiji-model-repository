@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
 public final class TestUtils {
@@ -57,7 +58,7 @@ public final class TestUtils {
     List<File> dependencies = Lists.newArrayList();
     for (int i = 0; i < numDeps; i++) {
       String dependencyName = "dependency-" + i;
-      File temp = createFakeJar(dependencyName, parentDir);
+      File temp = createFakeJar(dependencyName, ".jar", parentDir);
       dependencies.add(temp);
     }
     return dependencies;
@@ -71,23 +72,26 @@ public final class TestUtils {
    * @throws IOException if there is a problem creating the fake jar.
    */
   public static File createFakeJar(String fileName) throws IOException {
-    return createFakeJar(fileName, null);
+    return createFakeJar(fileName, ".jar", null);
   }
 
   /**
-   * Creates a fake jar in the specified directory, returning a handle to this file.
+   * Creates a fake file in the specified directory, returning a handle to this file.
    *
-   * @param fileName is the name of the fake jar to create.
+   * @param fileName is the name of the fake file to create.
+   * @param fileSuffix is the suffix of the file to create.
    * @param parentDir is the directory in which to create this fake jar.
    * @return a handle to the created file object.
    * @throws IOException if there is a problem creating this jar.
    */
-  public static File createFakeJar(String fileName, File parentDir) throws IOException {
+  public static File createFakeJar(String fileName, String fileSuffix, File parentDir)
+      throws IOException {
+    Preconditions.checkNotNull(fileSuffix);
     File temp = null;
     if (parentDir == null) {
-      temp = File.createTempFile(fileName, ".jar");
+      temp = File.createTempFile(fileName, fileSuffix);
     } else {
-      temp = File.createTempFile(fileName, ".jar", parentDir);
+      temp = File.createTempFile(fileName, fileSuffix, parentDir);
     }
     temp.deleteOnExit();
 
