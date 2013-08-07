@@ -31,9 +31,8 @@ public final class KijiModelRepoToolLauncher {
   /**
    * Unused private constructor.
    */
-  private KijiModelRepoToolLauncher() {
+  private KijiModelRepoToolLauncher() {}
 
-  }
   /**
    * Return the tool specified by the 'toolName' argument.
    *

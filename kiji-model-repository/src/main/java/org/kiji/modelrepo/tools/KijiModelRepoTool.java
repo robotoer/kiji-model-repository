@@ -33,6 +33,9 @@ import org.kiji.schema.tools.KijiTool;
  * incorporated into your jar.</p>
  */
 public interface KijiModelRepoTool extends KijiTool {
+  public static String MODEL_REPO_TOOL_BASE = "model-repo ";
+
+  public static String MODEL_REPO_TOOL_CATEGORY= "Model Repository";
 
   /**
    * Returns the name of the model repository tool name. This is the name of the tool

@@ -56,12 +56,12 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
 
   @Override
   public String getName() {
-    return getModelRepoToolName();
+    return MODEL_REPO_TOOL_BASE + getModelRepoToolName();
   }
 
   @Override
   public String getCategory() {
-    return "Model Repository";
+    return MODEL_REPO_TOOL_CATEGORY;
   }
 
   @Override

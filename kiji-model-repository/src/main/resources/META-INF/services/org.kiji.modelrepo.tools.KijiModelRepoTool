@@ -1,2 +1,3 @@
 #Model Repo Tools go here.
 org.kiji.modelrepo.tools.InitModelRepoTool
+org.kiji.modelrepo.tools.DeployModelRepoTool
