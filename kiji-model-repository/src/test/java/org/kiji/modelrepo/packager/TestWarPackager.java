@@ -19,12 +19,14 @@
 
 package org.kiji.modelrepo.packager;
 
+import static org.kiji.modelrepo.TestUtils.createFakeJar;
+import static org.kiji.modelrepo.TestUtils.getDependencies;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -34,7 +36,7 @@ import com.google.common.collect.Lists;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class WarPackagerTest {
+public class TestWarPackager {
 
   @Test
   public void testShouldCreateProperWarFileWithDependencies() throws Exception {
@@ -93,33 +95,5 @@ public class WarPackagerTest {
     return containsLibDir && (numEntries == expectedDependencies.size()) && filesValid;
   }
 
-  /**
-   * Return a list of "fake" dependency jars.
-   *
-   * @param numDeps is the number of fake dependencies to create.
-   * @return a list of absolute locations to dependent jars.
-   * @throws IOException if there is a problem creating the temporary jars.
-   */
-  private List<File> getDependencies(int numDeps) throws IOException {
-    List<File> dependencies = Lists.newArrayList();
-    for (int i = 0; i < numDeps; i++) {
-      String dependencyName = "dependency-" + i;
-      File temp = createFakeJar(dependencyName);
-      dependencies.add(temp);
-    }
-    return dependencies;
-  }
 
-  private File createFakeJar(String fileName) throws IOException {
-    File temp = File.createTempFile(fileName, ".jar");
-    temp.deleteOnExit();
-
-    // Write something to the file so that we can read it out to make sure
-    // the jar creation itself didn't screw up the file.
-    PrintWriter writer = new PrintWriter(temp);
-    writer.println(fileName);
-    writer.close();
-
-    return temp;
-  }
 }
