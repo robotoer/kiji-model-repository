@@ -19,7 +19,7 @@
 
 package org.kiji.modelrepo.tools;
 
-import java.net.URI;
+import java.io.IOException;
 import java.util.List;
 
 import com.google.common.base.Preconditions;
@@ -32,14 +32,13 @@ import org.kiji.schema.KijiURI;
 import org.kiji.schema.tools.BaseTool;
 
 /**
- * Implementation of the model repository installation tool. This will create a new model
- * repository table in the specified instance.
- *
+ * Implementation of the model repository upgrade tool. This will upgrade the model repository
+ * to the latest version.
  */
-public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTool {
+public final class UpgradeModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
   @Flag(name = "kiji", usage = "Name of the Kiji instance housing the model repository.")
-  private String mInstanceName = null;
+  private String mKijiURIFlag = null;
 
   private KijiURI mInstanceURI = null;
 
@@ -49,10 +48,10 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
   @Override
   protected void validateFlags() throws Exception {
     super.validateFlags();
-    if (mInstanceName == null) {
-      mInstanceName = DEFAULT_INSTANCE_URI;
+    if (mKijiURIFlag == null) {
+      mKijiURIFlag = DEFAULT_INSTANCE_URI;
     }
-    mInstanceURI = KijiURI.newBuilder(mInstanceName).build();
+    mInstanceURI = KijiURI.newBuilder(mKijiURIFlag).build();
   }
 
   @Override
@@ -67,23 +66,31 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
 
   @Override
   public String getModelRepoToolName() {
-    return "init";
+    return "upgrade";
   }
 
   @Override
   public String getDescription() {
-    return "Creates a new model repository.";
+    return "Upgrades a new model repository.";
   }
 
   @Override
   protected int run(List<String> nonFlagArgs) throws Exception {
-    Preconditions.checkArgument(nonFlagArgs.size() > 0);
-    String baseURI = nonFlagArgs.get(0);
-    // Simply check that the URI is valid.
-    URI parsedURI = URI.create(baseURI);
-    Kiji kijiInstance = Kiji.Factory.open(mInstanceURI);
-    KijiModelRepository.install(kijiInstance, parsedURI);
-    kijiInstance.release();
+    Preconditions.checkArgument(nonFlagArgs.size() == 0,
+        getName() + " doesn't take any non flag arguments.  Found: " + nonFlagArgs.size());
+
+    Kiji kijiInstance = null;
+    try {
+      kijiInstance = Kiji.Factory.open(mInstanceURI);
+      KijiModelRepository.upgrade(kijiInstance);
+    } catch(IOException ioe) {
+      getPrintStream().printf("Unable to upgrade model repository: " + ioe.getMessage());
+      return FAILURE;
+    } finally {
+      if (null != kijiInstance) {
+        kijiInstance.release();
+      }
+    }
     return SUCCESS;
   }
 }

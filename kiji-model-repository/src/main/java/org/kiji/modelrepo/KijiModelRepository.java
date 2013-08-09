@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 
+import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -246,16 +247,14 @@ public final class KijiModelRepository implements Closeable {
    * @throws IOException if there is an exception upgrading the model repository.
    */
   public static void upgrade(Kiji kiji) throws IOException {
-
-    if (mLatestLayout == null) {
-      throw new IOException("Unable to upgrade. Latest layout information is null.");
-    }
+    Preconditions.checkNotNull(mLatestLayout, 
+      "Unable to upgrade. Latest layout information is null.");
 
     if (isModelRepoTable(kiji)) {
       int fromVersion = getCurrentVersion(kiji.getMetaTable());
       doUpgrade(kiji, fromVersion);
     } else {
-      LOG.error(MODEL_REPO_TABLE_NAME + " is not a valid model repository table.");
+      throw new IOException(MODEL_REPO_TABLE_NAME + " is not a valid model repository table.");
     }
   }
 
