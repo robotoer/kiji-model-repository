@@ -260,12 +260,33 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Removes the model repository.
+   * Deletes the model repository.
    *
    * @param kiji is the instance in which the repo resides.
    */
-  public static void remove(Kiji kiji) {
+  public static void delete(Kiji kiji) throws IOException {
 
+    // Similarly to the install tool, there are a few possibilities:
+    // 1) The tableName doesn't exist at all ==> throw Exception.
+    // 2) The tableName exists and is a model-repo table ==> delete table.
+    // 3) The tableName exists and is not a model-repo table ==> throw Exception.
+
+    if (!kiji.getTableNames().contains(MODEL_REPO_TABLE_NAME)) {
+      throw new IOException("Model repository which is to be deleted "
+          + MODEL_REPO_TABLE_NAME
+          + " does not exist in instance "
+          + kiji.getURI() + ".");
+    } else if (isModelRepoTable(kiji)) {
+      LOG.info("Deleting model repository table...");
+      kiji.deleteTable(MODEL_REPO_TABLE_NAME);
+      // Remove metadata keys.
+      LOG.info("Removing model repository keys from metadata table...");
+      kiji.getMetaTable().removeValues(MODEL_REPO_TABLE_NAME, REPO_BASE_URL_KEY);
+      kiji.getMetaTable().removeValues(MODEL_REPO_TABLE_NAME, REPO_VERSION_KEY);
+    } else {
+      throw new IOException("Expected model repository table is not a valid model repository table "
+          + MODEL_REPO_TABLE_NAME + ".");
+    }
   }
 
   /**
