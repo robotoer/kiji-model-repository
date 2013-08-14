@@ -21,8 +21,9 @@ package org.kiji.modelrepo.depresolver;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Properties;
 
@@ -64,24 +65,24 @@ public class MavenDependencyResolver extends RawDependencyResolver {
     props.setProperty("silent", "true");
     props.setProperty("mdep.outputFile", tempClasspathFile.getAbsolutePath());
     request.setProperties(props);
-
+    BufferedReader reader = new BufferedReader(
+        new InputStreamReader(new FileInputStream(tempClasspathFile), "UTF-8"));
     try {
       InvocationResult result = mMavenInvoker.execute(request);
       if (result.getExitCode() != 0) {
         throw new IOException(result.getExecutionException());
       }
-      BufferedReader reader = new BufferedReader(new FileReader(tempClasspathFile));
       StringBuilder classPathLines = new StringBuilder();
       String line = reader.readLine();
       while (line != null) {
         classPathLines.append(line + ":");
         line = reader.readLine();
       }
-      reader.close();
       return super.resolveDependencies(classPathLines.toString());
-
     } catch (MavenInvocationException mie) {
       throw new IOException(mie);
+    } finally {
+      reader.close();
     }
   }
 }

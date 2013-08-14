@@ -263,6 +263,7 @@ public final class KijiModelRepository implements Closeable {
    * Deletes the model repository.
    *
    * @param kiji is the instance in which the repo resides.
+   * @throws IOException if delete cannot be correctly performed.
    */
   public static void delete(Kiji kiji) throws IOException {
 

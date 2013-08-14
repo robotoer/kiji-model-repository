@@ -50,19 +50,19 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   private KijiURI mInstanceURI = null;
 
   @Flag(name="definition", usage="Path to model definition.")
-  private String mDefinitionFlag = null;
+  private String mDefinitionFlag;
 
   @Flag(name="environment", usage="Path to model environment.")
-  private String mEnvironmentFlag = null;
+  private String mEnvironmentFlag;
 
   @Flag(name="version", usage="Model lifecycle version.")
-  private String mVersionFlag = null;
+  private String mVersionFlag;
 
   @Flag(name="production_ready", usage="Is the model lifecycle production ready.")
   private boolean mProductionReady = false;
 
   @Flag(name="message", usage="Update message for this deployment.")
-  private String mMessage = null;
+  private String mMessage;
 
   /** {@inheritDoc} */
   @Override
@@ -88,6 +88,8 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
     return "deploy";
   }
 
+  /** {@inheritDoc} */
+  @Override
   protected void validateFlags() throws Exception {
     Preconditions.checkNotNull(mDefinitionFlag,
         "Specify a model definition with --definition=modeldefinition.json ");
@@ -103,7 +105,8 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   @Override
   protected int run(List<String> arg0) throws Exception {
     // Validate that there's a maven artifact specified.
-    Preconditions.checkArgument(arg0.size() == 1, "Specify the name of exactly one artifact: Found: {}", arg0.size());
+    Preconditions.checkArgument(arg0.size() == 1,
+        "Specify the name of exactly one artifact: Found: {}", arg0.size());
     mMavenArtifact = arg0.get(0);
 
     Kiji kiji = Kiji.Factory.open(mInstanceURI);
@@ -130,6 +133,7 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
    *
    * @param filename containing the AvroModelDefinition.
    * @return AvroModelDefinition parsed from the file.
+   * @throws IOException when file cannot be properly read.
    */
   private static AvroModelDefinition readAvroModelDefinition(String filename) throws IOException {
     String json = readJSONFromFile(filename);
@@ -141,6 +145,7 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
    *
    * @param filename containing the AvroModelEnvironment.
    * @return AvroModelEnvironment parsed from the file.
+   * @throws IOException when file cannot be properly read.
    */
   private static AvroModelEnvironment readAvroModelEnvironment(String filename) throws IOException {
     String json = readJSONFromFile(filename);
@@ -153,6 +158,7 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
    *
    * @param filename to read from
    * @return String containing the JSON contents of the file.
+   * @throws IOException when file cannot be properly read.
    */
   private static String readJSONFromFile(String filename) throws IOException {
     FileInputStream fis = new FileInputStream(filename);
