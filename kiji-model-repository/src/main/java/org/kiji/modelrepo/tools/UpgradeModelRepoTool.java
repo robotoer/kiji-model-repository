@@ -83,7 +83,7 @@ public final class UpgradeModelRepoTool extends BaseTool implements KijiModelRep
     try {
       kijiInstance = Kiji.Factory.open(mInstanceURI);
       KijiModelRepository.upgrade(kijiInstance);
-    } catch(IOException ioe) {
+    } catch (IOException ioe) {
       getPrintStream().printf("Unable to upgrade model repository: " + ioe.getMessage());
       return FAILURE;
     } finally {

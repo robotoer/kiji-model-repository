@@ -19,8 +19,6 @@
 
 package org.kiji.modelrepo.tools;
 
-import java.io.IOException;
-
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -58,7 +56,8 @@ public class TestUpgradeModelRepoTool extends KijiToolTest {
       int returnCode = runTool(new UpgradeModelRepoTool(), kijiArg, baseRepoUrl);
       Assert.fail("Should fail with IllegalArgumentException");
     } catch (IllegalArgumentException iae) {
-      Assert.assertEquals("model-repo upgrade doesn't take any non flag arguments.  Found: 1", iae.getMessage());
+      Assert.assertEquals("model-repo upgrade doesn't take any non flag arguments.  Found: 1",
+          iae.getMessage());
     }
   }
 }

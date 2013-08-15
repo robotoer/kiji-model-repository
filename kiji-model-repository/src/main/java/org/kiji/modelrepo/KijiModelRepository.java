@@ -247,7 +247,7 @@ public final class KijiModelRepository implements Closeable {
    * @throws IOException if there is an exception upgrading the model repository.
    */
   public static void upgrade(Kiji kiji) throws IOException {
-    Preconditions.checkNotNull(mLatestLayout, 
+    Preconditions.checkNotNull(mLatestLayout,
       "Unable to upgrade. Latest layout information is null.");
 
     if (isModelRepoTable(kiji)) {
