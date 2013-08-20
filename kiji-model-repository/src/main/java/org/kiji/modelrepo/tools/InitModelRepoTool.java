@@ -82,8 +82,11 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
     // Simply check that the URI is valid.
     URI parsedURI = URI.create(baseURI);
     Kiji kijiInstance = Kiji.Factory.open(mInstanceURI);
-    KijiModelRepository.install(kijiInstance, parsedURI);
-    kijiInstance.release();
+    try {
+      KijiModelRepository.install(kijiInstance, parsedURI);
+    } finally {
+      kijiInstance.release();
+    }
     return SUCCESS;
   }
 }

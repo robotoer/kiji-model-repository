@@ -26,6 +26,7 @@ import java.util.Properties;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.io.Files;
 
 import org.apache.maven.shared.invoker.DefaultInvocationRequest;
 import org.apache.maven.shared.invoker.InvocationRequest;
@@ -63,7 +64,7 @@ public class MavenArtifactUploader implements ArtifactUploader {
   private static final String REPOSITORY_ID = "kiji-model-repository";
 
   @Override
-  public void uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
+  public String uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
       URI baseURI, File artifactPath) throws IOException {
 
     Preconditions.checkArgument(artifactPath.exists(), "Error %s does not exist!",
@@ -93,5 +94,18 @@ public class MavenArtifactUploader implements ArtifactUploader {
     } catch (MavenInvocationException mie) {
       throw new IOException(mie);
     }
+
+    // Construct the return location.
+    StringBuilder returnLocation = new StringBuilder();
+    returnLocation.append(groupName.replace('.', '/'));
+    returnLocation.append("/");
+    returnLocation.append(artifactName.replace('.', '/'));
+    returnLocation.append("/");
+    returnLocation.append(version.toCanonicalString());
+    returnLocation.append("/");
+    returnLocation.append(artifactName + "-" + version.toCanonicalString()
+        + "." + Files.getFileExtension(artifactPath.getAbsolutePath()));
+
+    return returnLocation.toString();
   }
 }

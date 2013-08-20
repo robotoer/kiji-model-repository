@@ -36,7 +36,7 @@ public class TestInitModelRepoTool extends KijiToolTest {
 
   @Test
   public void testShouldInstallModelRepo() throws Exception {
-    final Kiji localKiji = getKiji();
+    final Kiji localKiji = createTestKiji();
     final String baseRepoUrl = "http://someHost:1234/releases";
     final String kijiArg = String.format("--kiji=%s", localKiji.getURI().toString());
     final int returnCode = runTool(new InitModelRepoTool(), kijiArg, baseRepoUrl);
@@ -47,7 +47,7 @@ public class TestInitModelRepoTool extends KijiToolTest {
 
   @Test
   public void testShouldFailIfTableExists() throws Exception {
-    final Kiji localKiji = getKiji();
+    final Kiji localKiji = createTestKiji();
     final KijiTableLayout layout = KijiTableLayouts.getTableLayout(KijiTableLayouts.FOO_TEST);
     final TableLayoutDesc desc = layout.getDesc();
     desc.setName(KijiModelRepository.MODEL_REPO_TABLE_NAME);
@@ -74,7 +74,7 @@ public class TestInitModelRepoTool extends KijiToolTest {
 
   @Test
   public void testShouldInstallModelRepoThroughSubTool() throws Exception {
-    final Kiji localKiji = getKiji();
+    final Kiji localKiji = createTestKiji();
     final String baseRepoUrl = "http://someHost:1234/releases";
     final String kijiArg = String.format("--kiji=%s", localKiji.getURI().toString());
     final int returnCode = runTool(new BaseModelRepoTool(), "init", kijiArg, baseRepoUrl);

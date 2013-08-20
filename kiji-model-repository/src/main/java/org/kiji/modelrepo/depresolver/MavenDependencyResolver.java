@@ -24,9 +24,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.util.List;
 import java.util.Properties;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
 import org.apache.maven.shared.invoker.DefaultInvocationRequest;
@@ -37,7 +39,6 @@ import org.apache.maven.shared.invoker.MavenInvocationException;
 
 import org.kiji.modelrepo.MavenUtils;
 
-
 /**
  * Resolves dependencies by using a Maven POM file. The dependency input is the
  * location to the pom file and the resulting dependencies will be resolved by obtaining
@@ -46,11 +47,13 @@ import org.kiji.modelrepo.MavenUtils;
  */
 public class MavenDependencyResolver extends RawDependencyResolver {
 
-
   private Invoker mMavenInvoker = MavenUtils.getInvoker();
 
   @Override
   public List<File> resolveDependencies(String dependencyInput) throws IOException {
+
+    Preconditions.checkNotNull(dependencyInput, "Input POM file can't be null.");
+
     // Here, dependencyInput is a file to the pom.xml and we'll use that to fetch
     // the classpath and pass that to the super method that will validate and construct
     // the final dependency list.
@@ -65,24 +68,30 @@ public class MavenDependencyResolver extends RawDependencyResolver {
     props.setProperty("silent", "true");
     props.setProperty("mdep.outputFile", tempClasspathFile.getAbsolutePath());
     request.setProperties(props);
-    BufferedReader reader = new BufferedReader(
-        new InputStreamReader(new FileInputStream(tempClasspathFile), "UTF-8"));
+    BufferedReader reader = null;
+
     try {
       InvocationResult result = mMavenInvoker.execute(request);
       if (result.getExitCode() != 0) {
         throw new IOException(result.getExecutionException());
       }
+      reader = new BufferedReader(new InputStreamReader(new FileInputStream(tempClasspathFile),
+          Charset.defaultCharset()));
       StringBuilder classPathLines = new StringBuilder();
       String line = reader.readLine();
       while (line != null) {
         classPathLines.append(line + ":");
         line = reader.readLine();
       }
+
       return super.resolveDependencies(classPathLines.toString());
+
     } catch (MavenInvocationException mie) {
       throw new IOException(mie);
     } finally {
-      reader.close();
+      if (reader != null) {
+        reader.close();
+      }
     }
   }
 }

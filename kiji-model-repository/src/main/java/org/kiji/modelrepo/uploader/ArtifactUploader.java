@@ -39,8 +39,10 @@ public interface ArtifactUploader {
    * @param version is the version of the artifact.
    * @param baseURI The base URI of the storage layer.
    * @param artifactPath The local file to upload.
+   * @return relative location of where the file was uploaded.
+   *
    * @throws IOException if there is an exception uploading the artifact.
    */
-  void uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
+  String uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
       URI baseURI, File artifactPath) throws IOException;
 }

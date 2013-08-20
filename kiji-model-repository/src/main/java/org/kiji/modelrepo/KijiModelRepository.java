@@ -20,22 +20,36 @@
 package org.kiji.modelrepo;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import com.google.common.base.Preconditions;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modelrepo.packager.Packager;
+import org.kiji.modelrepo.packager.WarPackager;
+import org.kiji.modelrepo.uploader.ArtifactUploader;
+import org.kiji.modelrepo.uploader.MavenArtifactUploader;
 import org.kiji.schema.AtomicKijiPutter;
 import org.kiji.schema.EntityId;
 import org.kiji.schema.Kiji;
+import org.kiji.schema.KijiDataRequest;
 import org.kiji.schema.KijiMetaTable;
+import org.kiji.schema.KijiRowData;
+import org.kiji.schema.KijiRowScanner;
 import org.kiji.schema.KijiTable;
+import org.kiji.schema.KijiTableReader;
+import org.kiji.schema.KijiTableReader.KijiScannerOptions;
+import org.kiji.schema.avro.RowKeyFormat2;
 import org.kiji.schema.avro.TableLayoutDesc;
+import org.kiji.schema.filter.FormattedEntityIdRowFilter;
 import org.kiji.schema.layout.KijiTableLayout;
 import org.kiji.schema.util.ProtocolVersion;
 
@@ -62,6 +76,11 @@ public final class KijiModelRepository implements Closeable {
   private KijiMetaTable mKijiMetaTable;
 
   private int mCurrentModelRepoVersion = 0;
+  private URI mCurrentBaseStorageURI = null;
+
+  private ArtifactUploader mUploader = new MavenArtifactUploader();
+
+  private Packager mArtifactPackager = new WarPackager();
 
   /**
    * The latest layout version. Defined by looking at all the
@@ -84,7 +103,7 @@ public final class KijiModelRepository implements Closeable {
    * model repository table layout. Was hoping to inspect the contents of
    * org.kiji.modelrepo.layouts/*.json but doing this in a jar doesn't seem very straightforward.
    **/
-  private static final String LATEST_LAYOUT_FILE=
+  private static final String LATEST_LAYOUT_FILE =
       TABLE_LAYOUT_BASE_PKG + "/model-repo-layout-MR-1.json";
 
   static {
@@ -94,7 +113,7 @@ public final class KijiModelRepository implements Closeable {
     try {
       mLatestLayout = KijiTableLayout
           .createFromEffectiveJson(KijiModelRepository
-              .class.getResourceAsStream(LATEST_LAYOUT_FILE));
+          .class.getResourceAsStream(LATEST_LAYOUT_FILE));
       String tableLayoutId = mLatestLayout.getDesc().getLayoutId();
       mLatestLayoutVersion = Integer.parseInt(tableLayoutId
           .substring(REPO_LAYOUT_VERSION_PREFIX.length()));
@@ -132,11 +151,13 @@ public final class KijiModelRepository implements Closeable {
     mKijiTable = kiji.openTable(MODEL_REPO_TABLE_NAME);
     mKijiMetaTable = kiji.getMetaTable();
 
+    mCurrentBaseStorageURI = getCurrentBaseURI(mKijiMetaTable);
     mCurrentModelRepoVersion = getCurrentVersion(mKijiMetaTable);
   }
 
   @Override
   public void close() throws IOException {
+    mKijiMetaTable.close();
     mKijiTable.release();
   }
 
@@ -204,7 +225,7 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Retrieves the latest model repository version.
+   * Retrieves the model repository version.
    *
    * @param metaTable is the Kiji metadata table.
    * @return the current version of the model repository.
@@ -214,6 +235,19 @@ public final class KijiModelRepository implements Closeable {
       throws IOException {
     ByteBuffer buf = ByteBuffer.wrap(metaTable.getValue(MODEL_REPO_TABLE_NAME, REPO_VERSION_KEY));
     return buf.getInt();
+  }
+
+  /**
+   * Retrieves the model repository's base storage URI.
+   *
+   * @param metaTable is the Kiji metadata table.
+   * @return the model repository's base storage URI.
+   * @throws IOException if there is an exception retrieving the URI.
+   */
+  private static URI getCurrentBaseURI(KijiMetaTable metaTable) throws IOException {
+    ByteBuffer buf = ByteBuffer.wrap(metaTable.getValue(MODEL_REPO_TABLE_NAME, REPO_BASE_URL_KEY));
+    String uri = new String(buf.array());
+    return URI.create(uri);
   }
 
   /**
@@ -248,7 +282,7 @@ public final class KijiModelRepository implements Closeable {
    */
   public static void upgrade(Kiji kiji) throws IOException {
     Preconditions.checkNotNull(mLatestLayout,
-      "Unable to upgrade. Latest layout information is null.");
+        "Unable to upgrade. Latest layout information is null.");
 
     if (isModelRepoTable(kiji)) {
       int fromVersion = getCurrentVersion(kiji.getMetaTable());
@@ -284,8 +318,9 @@ public final class KijiModelRepository implements Closeable {
       kiji.getMetaTable().removeValues(MODEL_REPO_TABLE_NAME, REPO_BASE_URL_KEY);
       kiji.getMetaTable().removeValues(MODEL_REPO_TABLE_NAME, REPO_VERSION_KEY);
     } else {
-      throw new IOException("Expected model repository table is not a valid model repository table "
-          + MODEL_REPO_TABLE_NAME + ".");
+      throw new IOException(
+          "Expected model repository table is not a valid model repository table "
+              + MODEL_REPO_TABLE_NAME + ".");
     }
   }
 
@@ -321,30 +356,66 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Deploys a new model lifecycle or update an existing model lifecycle.
+   * Deploys a new model lifecycle.
    *
-   * @param name that identifies this model lifecycle
-   * @param version of this particular instance of a model lifecycle
+   * @param groupName that identifies this model lifecycle
+   * @param artifactName that identifies this model lifecycle
+   * @param version of this particular instance of a model lifecycle. If this is null,
+   *        the version will be set automatically to 1 revision higher than the previously deployed
+   *        version of the lifecycle.
+   * @param artifactFile is the actual artifact to upload
+   * @param dependencies are the third-party dependencies to include in the artifact
    * @param definition AvroModelDefinition of model lifecycle
    * @param environment AvroModelEnvironment of model lifecycle
    * @param productionReady is true iff model lifecycle is ready for scoring
    * @param message (optional) latest update message of the model lifecycle
-   * @throws IOException if model lifecycle cannot be written to model repository table.
+   * @throws IOException if model lifecycle cannot be deployed.
    */
+  // CSOFF: ParameterNumberCheck
   public void deployModelLifecycle(
-      final String name,
+      final String groupName,
+      final String artifactName,
       final ProtocolVersion version,
+      final File artifactFile,
+      final List<File> dependencies,
       final AvroModelDefinition definition,
       final AvroModelEnvironment environment,
       final boolean productionReady,
       final String message
       ) throws IOException {
+    // CSON: ParameterNumberCheck
+
+    // Steps:
+    // 1) If the version is not specified, then fetch the latest version given the
+    // group/artifact names. Increment by 0.0.1 ELSE check if row exists and if so, throw exception
+    ProtocolVersion latestVersion = version;
+    if (latestVersion == null) {
+      // Fetch latest version
+      latestVersion = fetchNextVersion(groupName, artifactName);
+    } else {
+      final KijiRowData result = getModelLifeCycle(groupName, artifactName, latestVersion);
+      Preconditions.checkArgument(!result.containsColumn("model", "location"),
+          "Error Version %s exists.", version.toCanonicalString());
+    }
+    // 2) Given the properly formed triplet:
+    // a) Construct final artifact given dependencies
+    // b) Upload artifact to repository
+    // c) Add entry in Kiji table
+    final EntityId eid = mKijiTable.getEntityId(getModelName(groupName, artifactName),
+        latestVersion.toCanonicalString());
+
     final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
-    final EntityId eid = mKijiTable.getEntityId(name, version.toCanonicalString());
     try {
+      File outputFile = File.createTempFile("final_artifact", ".war");
+      outputFile.deleteOnExit();
+      dependencies.add(artifactFile);
+      mArtifactPackager.generateArtifact(outputFile, dependencies);
+      String relativeLocation = mUploader.uploadArtifact(groupName, artifactName, latestVersion,
+          mCurrentBaseStorageURI, outputFile);
       putter.begin(eid);
       putter.put("model", "definition", definition);
       putter.put("model", "environment", environment);
+      putter.put("model", "location", relativeLocation);
       putter.put("model", "production_ready", productionReady);
       if (null != message) {
         putter.put("model", "message", message);
@@ -353,5 +424,87 @@ public final class KijiModelRepository implements Closeable {
     } finally {
       putter.close();
     }
+  }
+
+  /**
+   * Fetches the next version of the given lifecycle by finding the last version
+   * of the deployed lifecycle and adding 1 to the revision. For example, if the
+   * last known version was 1.0.0 then the next version will be 1.0.1.
+   *
+   * @param groupName is what identifies this model lifecycle.
+   * @param artifactName is what identifies the model lifecycle's artifact.
+   * @return the next version of the lifecycle given the group/artifact name.
+   * @throws IOException if there is a problem fetching version info.
+   */
+  private ProtocolVersion fetchNextVersion(final String groupName, final String artifactName)
+      throws IOException {
+
+    final FormattedEntityIdRowFilter filter = new FormattedEntityIdRowFilter(
+        (RowKeyFormat2) mKijiTable.getLayout().getDesc().getKeysFormat(),
+        getModelName(groupName, artifactName));
+    final KijiDataRequest dataRequest = KijiDataRequest.create("model");
+    final KijiScannerOptions options = new KijiScannerOptions();
+    options.setKijiRowFilter(filter);
+
+    final KijiTableReader reader = mKijiTable.openTableReader();
+    try {
+      final KijiRowScanner scanner = reader.getScanner(dataRequest, options);
+
+      ProtocolVersion currentVersion = ProtocolVersion.parse("0.0.0");
+      // Find the highest version.
+      for (KijiRowData row : scanner) {
+        ProtocolVersion version = ProtocolVersion.parse(row.getEntityId()
+            .getComponentByIndex(1).toString());
+        if (version.compareTo(currentVersion) > 0) {
+          currentVersion = version;
+        }
+      }
+      scanner.close();
+
+      return ProtocolVersion.
+          parse(String.format("%d.%d.%d", currentVersion.getMajorVersion(),
+              currentVersion.getMinorVersion(), currentVersion.getRevision() + 1));
+    } finally {
+      reader.close();
+    }
+  }
+
+  /**
+   * Returns a row representing the model lifecycle data.
+   *
+   * @param groupName is the lifecycle's group name.
+   * @param artifactName is the lifecycle's artifact name.
+   * @param version is the version of the lifecycle to retrieve
+   * @return a single row representing a model lifecycle. This row object may be empty if the
+   *         requested lifecycle doesn't exist in the repository.
+   * @throws IOException if there is an exception fetching data.
+   */
+  public KijiRowData getModelLifeCycle(String groupName, String artifactName,
+      ProtocolVersion version) throws IOException {
+
+    KijiDataRequest dataRequest = KijiDataRequest.create("model");
+    KijiTableReader reader = mKijiTable.openTableReader();
+    try {
+      EntityId eid = mKijiTable.getEntityId(getModelName(groupName, artifactName),
+          version.toCanonicalString());
+      KijiRowData returnRow = reader.get(eid, dataRequest);
+      return returnRow;
+    } finally {
+      reader.close();
+    }
+  }
+
+  /**
+   * Returns the canonical name of a model life cycle given the group and artifact name. This
+   * is here as the layout supports a single name field but other parts of the system support
+   * the separate group/artifact names.
+   *
+   * @param groupName the group name of the lifecycle.
+   * @param artifactName the artifact name of the lifecycle.
+   * @return the canonical name of the model lifecycle suitable for storage in the Kiji table
+   *         storing deployed lifecycles.
+   */
+  private static String getModelName(String groupName, String artifactName) {
+    return (groupName + "." + artifactName).intern();
   }
 }

@@ -43,6 +43,7 @@ public final class MavenUtils {
   public static Invoker getInvoker() {
     if (mInvoker == null) {
       mInvoker = new DefaultInvoker();
+      mInvoker.setOutputHandler(new LoggerOutputHandler());
       if (mInvoker.getMavenHome() == null) {
         File possibleMavenHome = findMavenHome();
         if (possibleMavenHome != null) {

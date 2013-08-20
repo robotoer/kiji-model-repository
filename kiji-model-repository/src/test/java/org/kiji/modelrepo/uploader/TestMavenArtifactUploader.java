@@ -41,11 +41,15 @@ public class TestMavenArtifactUploader {
     File tempArtifact = TestUtils.createFakeJar("my_final_artifact", ".war", null);
 
     ArtifactUploader uploader = new MavenArtifactUploader();
-    uploader.uploadArtifact("org.kiji.models", "checkout_model", ProtocolVersion.parse("1.0.0"),
-        tempDeployLocation.toURI(), tempArtifact);
+    String expectedRelativeLocation =
+        "org/kiji/models/checkout_model/1.0.0/checkout_model-1.0.0.war";
+    String actualLocation = uploader.uploadArtifact("org.kiji.models", "checkout_model",
+        ProtocolVersion.parse("1.0.0"), tempDeployLocation.toURI(), tempArtifact);
+
+    Assert.assertEquals(expectedRelativeLocation, actualLocation);
 
     File expectedArtifactLocation = new File(tempDeployLocation,
-        "org/kiji/models/checkout_model/1.0.0/checkout_model-1.0.0.war");
+       expectedRelativeLocation);
     Assert.assertTrue(expectedArtifactLocation.exists());
   }
 
