@@ -22,11 +22,9 @@ package org.kiji.modelrepo.packager;
 import static org.kiji.modelrepo.TestUtils.createFakeJar;
 import static org.kiji.modelrepo.TestUtils.getDependencies;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -35,6 +33,8 @@ import com.google.common.collect.Lists;
 
 import org.junit.Assert;
 import org.junit.Test;
+
+import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
 
 public class TestWarPackager {
 
@@ -74,6 +74,7 @@ public class TestWarPackager {
       throws IOException {
     JarInputStream is = new JarInputStream(new FileInputStream(warFile));
     JarEntry nextEntry = is.getNextJarEntry();
+    WarArtifactValidator warValidator = new WarArtifactValidator();
     int numEntries = 0;
     boolean containsLibDir = false;
     boolean filesValid = true;
@@ -81,12 +82,7 @@ public class TestWarPackager {
       if ("WEB-INF/lib/".equalsIgnoreCase(nextEntry.getName())) {
         containsLibDir = true;
       } else {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-        String fileContents = reader.readLine();
-        // The jar has written in it, the name of the file to keep validation simple. This
-        // is simply testing that the file was stored properly in the war file and can be
-        // read back out as expected.
-        filesValid = filesValid && nextEntry.getName().contains(fileContents);
+        filesValid = filesValid && warValidator.isValid(is);
         numEntries++;
       }
       nextEntry = is.getNextJarEntry();
@@ -94,6 +90,5 @@ public class TestWarPackager {
     is.close();
     return containsLibDir && (numEntries == expectedDependencies.size()) && filesValid;
   }
-
 
 }

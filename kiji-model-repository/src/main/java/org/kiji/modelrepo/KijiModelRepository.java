@@ -22,17 +22,25 @@ package org.kiji.modelrepo;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Map.Entry;
+import java.util.NavigableMap;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 
+import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
+import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
 import org.kiji.modelrepo.packager.Packager;
 import org.kiji.modelrepo.packager.WarPackager;
 import org.kiji.modelrepo.uploader.ArtifactUploader;
@@ -41,6 +49,7 @@ import org.kiji.schema.AtomicKijiPutter;
 import org.kiji.schema.EntityId;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiDataRequest;
+import org.kiji.schema.KijiDataRequestBuilder;
 import org.kiji.schema.KijiMetaTable;
 import org.kiji.schema.KijiRowData;
 import org.kiji.schema.KijiRowScanner;
@@ -506,5 +515,115 @@ public final class KijiModelRepository implements Closeable {
    */
   private static String getModelName(String groupName, String artifactName) {
     return (groupName + "." + artifactName).intern();
+  }
+
+  /**
+   * Check that every model in the model repository table is associated with a valid model location
+   * in the model repository, i.e. that a valid model artifact is found at the model location.
+   *
+   * @param download set to true allows the method to download and validate the artifact file.
+   * @return List of exceptions of inconsistent model locations.
+   * @throws IOException if model repository table can not be properly read
+   *         or if base model repository URL is malformed
+   *         or if a temporary file can not be allocated for downloading model artifacts.
+   */
+  public List<Exception> checkModelLocations(final boolean download) throws IOException {
+    final List<Exception> issues = Lists.newArrayList();
+    final URI baseURI;
+    try {
+      baseURI = getCurrentBaseURI(mKijiMetaTable);
+    } catch (IOException e) {
+      issues.add(new ModelRepositoryConsistencyException("Base URI can not be acquired."));
+      return issues;
+    }
+
+    // Read model repository table and validate each model location url.
+    final KijiTableReader reader = mKijiTable.openTableReader();
+    final KijiDataRequestBuilder dataRequestBuilder = KijiDataRequest.builder();
+    dataRequestBuilder.addColumns(dataRequestBuilder
+        .newColumnsDef()
+        .withMaxVersions(Integer.MAX_VALUE)
+        .add("model", "location"));
+    final KijiRowScanner scanner = reader.getScanner(dataRequestBuilder.build(),
+        new KijiScannerOptions());
+    try {
+      for (KijiRowData row : scanner) {
+        final String entityName = row.getEntityId().getComponentByIndex(0);
+        final ProtocolVersion entityVersion = ProtocolVersion
+            .parse(row.getEntityId().getComponentByIndex(1).toString());
+        final NavigableMap<Long, CharSequence> locations = row.getValues("model", "location");
+        for (final Entry<Long, CharSequence> cell : locations.entrySet()) {
+          final URL location = baseURI.resolve(cell.getValue().toString()).toURL();
+          // Currently only supports http and fs.
+          // TODO: Support more protocols: ssh, etc.
+          if (download) {
+            final File artifactFile = File.createTempFile(
+                String.format("%s-%s-", entityName, entityVersion),
+                ".war");
+            artifactFile.deleteOnExit();
+            // Download artifact to artifactFile.
+            if (downloadArtifact(location, artifactFile)) {
+              // Parse artifactFile for validation.
+              final ArtifactValidator artifactValidator = new WarArtifactValidator();
+              if (!artifactValidator.isValid(artifactFile)) {
+                issues.add(new ModelRepositoryConsistencyException(
+                    entityName,
+                    entityVersion,
+                    String.format("Artifact from %s is not a valid jar/war file [ts=%d].",
+                    location.toString(),
+                    cell.getKey())));
+              }
+            } else {
+              issues.add(new ModelRepositoryConsistencyException(
+                  entityName,
+                  entityVersion,
+                  String.format("Unable to retrieve artifact from %s [ts=%d].",
+                  location.toString(),
+                  cell.getKey())));
+            }
+            // Delete artifactFile as it's no use any more.
+            artifactFile.delete();
+          } else {
+            InputStream artifactInputStream = null;
+            try {
+              artifactInputStream = location.openStream();
+            } catch (Exception e) {
+              issues.add(new ModelRepositoryConsistencyException(
+                  entityName,
+                  entityVersion,
+                  String.format("Unable to find artifact at %s [ts=%d].",
+                  location.toString(),
+                  cell.getKey())));
+            } finally {
+              if (null != artifactInputStream) {
+                artifactInputStream.close();
+              }
+            }
+          }
+        }
+      }
+    } finally {
+      scanner.close();
+      reader.close();
+    }
+    return issues;
+  }
+
+  /**
+   * Copies artifact from URL to file on disk.
+   *
+   * @param location URL of the source file
+   * @param file target
+   * @return true iff copy happen unexceptionally
+   */
+  private static boolean downloadArtifact(final URL location, final File file) {
+    LOG.info("Preparing to download model artifact to temporary location {}",
+        file.getAbsolutePath());
+    try {
+      FileUtils.copyURLToFile(location, file);
+    } catch (Exception e) {
+      return false;
+    }
+    return true;
   }
 }

@@ -3,3 +3,4 @@ org.kiji.modelrepo.tools.InitModelRepoTool
 org.kiji.modelrepo.tools.DeployModelRepoTool
 org.kiji.modelrepo.tools.UpgradeModelRepoTool
 org.kiji.modelrepo.tools.DeleteModelRepoTool
+org.kiji.modelrepo.tools.CheckModelRepoTool

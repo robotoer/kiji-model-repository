@@ -20,9 +20,11 @@
 package org.kiji.modelrepo;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.List;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -76,7 +78,7 @@ public final class TestUtils {
   }
 
   /**
-   * Creates a fake file in the specified directory, returning a handle to this file.
+   * Create a valid jar/war file with Manifest and return a handle to this file.
    *
    * @param fileName is the name of the fake file to create.
    * @param fileSuffix is the suffix of the file to create.
@@ -94,13 +96,9 @@ public final class TestUtils {
       temp = File.createTempFile(fileName, fileSuffix, parentDir);
     }
     temp.deleteOnExit();
-
-    // Write something to the file so that we can read it out to make sure
-    // the jar creation itself didn't screw up the file.
-    PrintWriter writer = new PrintWriter(temp);
-    writer.println(fileName);
-    writer.close();
-
+    FileOutputStream stream = new FileOutputStream(temp.getAbsolutePath());
+    JarOutputStream out = new JarOutputStream(stream, new Manifest());
+    out.close();
     return temp;
   }
 }
