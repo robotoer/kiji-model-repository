@@ -54,7 +54,6 @@ public class TestCheckModelRepoTool extends KijiToolTest {
   @Test
   public void testReadFakeModelsFromModelRepo() throws Exception {
     // Set up artifacts in temporary repository.
-    final File artifactJar = TestUtils.createFakeJar("artifact", ".war", mTempDir);
     final File invalidJar = File.createTempFile("artifact", ".jar", mTempDir);
 
     // Set up model repository table manually.
@@ -64,8 +63,6 @@ public class TestCheckModelRepoTool extends KijiToolTest {
     final EntityId eid2 = table.getEntityId("org.kiji.fake.anotherproject", "1.0.0");
     writer.put(eid1, "model", "location", 1L,
         mTempDir.toURI().relativize(invalidJar.toURI()).toString());
-    writer.put(eid1, "model", "location", 2L,
-        mTempDir.toURI().relativize(artifactJar.toURI()).toString());
     writer.put(eid2, "model", "location", "nonexistent.war");
     writer.close();
     table.release();

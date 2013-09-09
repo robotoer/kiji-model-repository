@@ -22,34 +22,33 @@ package org.kiji.modelrepo;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.Map.Entry;
-import java.util.NavigableMap;
+import java.util.Set;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
-import org.codehaus.plexus.util.FileUtils;
+import org.apache.avro.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
-import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
-import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
 import org.kiji.modelrepo.packager.Packager;
 import org.kiji.modelrepo.packager.WarPackager;
 import org.kiji.modelrepo.uploader.ArtifactUploader;
 import org.kiji.modelrepo.uploader.MavenArtifactUploader;
 import org.kiji.schema.AtomicKijiPutter;
+import org.kiji.schema.DecodedCell;
 import org.kiji.schema.EntityId;
 import org.kiji.schema.Kiji;
+import org.kiji.schema.KijiColumnName;
 import org.kiji.schema.KijiDataRequest;
 import org.kiji.schema.KijiDataRequestBuilder;
+import org.kiji.schema.KijiDataRequestBuilder.ColumnsDef;
 import org.kiji.schema.KijiMetaTable;
 import org.kiji.schema.KijiRowData;
 import org.kiji.schema.KijiRowScanner;
@@ -58,6 +57,7 @@ import org.kiji.schema.KijiTableReader;
 import org.kiji.schema.KijiTableReader.KijiScannerOptions;
 import org.kiji.schema.avro.RowKeyFormat2;
 import org.kiji.schema.avro.TableLayoutDesc;
+import org.kiji.schema.filter.ColumnValueEqualsRowFilter;
 import org.kiji.schema.filter.FormattedEntityIdRowFilter;
 import org.kiji.schema.layout.KijiTableLayout;
 import org.kiji.schema.util.ProtocolVersion;
@@ -514,6 +514,11 @@ public final class KijiModelRepository implements Closeable {
    *         storing deployed lifecycles.
    */
   private static String getModelName(String groupName, String artifactName) {
+    Preconditions.checkNotNull(groupName);
+    Preconditions.checkNotNull(artifactName);
+    Preconditions.checkArgument(groupName.length() > 0, "Group name must be nonempty string.");
+    Preconditions.checkArgument(artifactName.length() > 0,
+        "Artifact name must be nonempty string.");
     return (groupName + "." + artifactName).intern();
   }
 
@@ -548,59 +553,8 @@ public final class KijiModelRepository implements Closeable {
         new KijiScannerOptions());
     try {
       for (KijiRowData row : scanner) {
-        final String entityName = row.getEntityId().getComponentByIndex(0);
-        final ProtocolVersion entityVersion = ProtocolVersion
-            .parse(row.getEntityId().getComponentByIndex(1).toString());
-        final NavigableMap<Long, CharSequence> locations = row.getValues("model", "location");
-        for (final Entry<Long, CharSequence> cell : locations.entrySet()) {
-          final URL location = baseURI.resolve(cell.getValue().toString()).toURL();
-          // Currently only supports http and fs.
-          // TODO: Support more protocols: ssh, etc.
-          if (download) {
-            final File artifactFile = File.createTempFile(
-                String.format("%s-%s-", entityName, entityVersion),
-                ".war");
-            artifactFile.deleteOnExit();
-            // Download artifact to artifactFile.
-            if (downloadArtifact(location, artifactFile)) {
-              // Parse artifactFile for validation.
-              final ArtifactValidator artifactValidator = new WarArtifactValidator();
-              if (!artifactValidator.isValid(artifactFile)) {
-                issues.add(new ModelRepositoryConsistencyException(
-                    entityName,
-                    entityVersion,
-                    String.format("Artifact from %s is not a valid jar/war file [ts=%d].",
-                    location.toString(),
-                    cell.getKey())));
-              }
-            } else {
-              issues.add(new ModelRepositoryConsistencyException(
-                  entityName,
-                  entityVersion,
-                  String.format("Unable to retrieve artifact from %s [ts=%d].",
-                  location.toString(),
-                  cell.getKey())));
-            }
-            // Delete artifactFile as it's no use any more.
-            artifactFile.delete();
-          } else {
-            InputStream artifactInputStream = null;
-            try {
-              artifactInputStream = location.openStream();
-            } catch (Exception e) {
-              issues.add(new ModelRepositoryConsistencyException(
-                  entityName,
-                  entityVersion,
-                  String.format("Unable to find artifact at %s [ts=%d].",
-                  location.toString(),
-                  cell.getKey())));
-            } finally {
-              if (null != artifactInputStream) {
-                artifactInputStream.close();
-              }
-            }
-          }
-        }
+        issues.addAll((new ModelArtifact(row, Sets.newHashSet(ModelArtifact.LOCATION_KEY)))
+            .checkModelLocation(baseURI, download));
       }
     } finally {
       scanner.close();
@@ -610,20 +564,71 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Copies artifact from URL to file on disk.
+   * Acquires a set of model lifecycle row data containing requested fields from
+   * the model repository table.
    *
-   * @param location URL of the source file
-   * @param file target
-   * @return true iff copy happen unexceptionally
+   * @param fields requested by the user; null returns all fields
+   * @param minTimestamp minimum timestamp of cells to return
+   * @param maxTimestamp maximum timestamp of cells to return
+   * @param maxVersions maximum versions of a cell to return
+   * @param productionReadyOnly when true returns models whose latest production_ready flag is true.
+   * @return a set of model row data from the model repository table.
+   * @throws IOException when table can not be properly scanned.
    */
-  private static boolean downloadArtifact(final URL location, final File file) {
-    LOG.info("Preparing to download model artifact to temporary location {}",
-        file.getAbsolutePath());
-    try {
-      FileUtils.copyURLToFile(location, file);
-    } catch (Exception e) {
-      return false;
+  public Set<ModelArtifact> getModelLifecycles(Set<String> fields,
+      final long minTimestamp,
+      final long maxTimestamp,
+      final int maxVersions,
+      final boolean productionReadyOnly) throws IOException {
+    Preconditions.checkArgument(minTimestamp <= maxTimestamp);
+    Preconditions.checkArgument(maxVersions >= 0);
+
+    final Set<ModelArtifact> setOfModels = Sets.newHashSet();
+    final KijiTableReader reader = mKijiTable.openTableReader();
+    final KijiDataRequestBuilder dataRequestBuilder = KijiDataRequest.builder();
+    // We want to get every existing model in the table. Every model has a definition so request
+    // the model:definition column.
+    final ColumnsDef columns = dataRequestBuilder
+        .newColumnsDef()
+        .withMaxVersions(maxVersions)
+        .add(new KijiColumnName(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.DEFINITION_KEY));
+    // Add all other fields requested by the user.
+    if (null == fields) {
+      fields = Sets.newHashSet(ModelArtifact.DEFINITION_KEY,
+          ModelArtifact.ENVIRONMENT_KEY,
+          ModelArtifact.LOCATION_KEY,
+          ModelArtifact.PRODUCTION_READY_KEY,
+          ModelArtifact.MESSAGES_KEY);
     }
-    return true;
+    for (final String field : fields) {
+      if (!field.equals(ModelArtifact.DEFINITION_KEY)) {
+        columns.add(new KijiColumnName(ModelArtifact.MODEL_REPO_FAMILY, field));
+      }
+    }
+    dataRequestBuilder.addColumns(columns);
+    dataRequestBuilder.withTimeRange(minTimestamp, maxTimestamp);
+
+    // If only the production ready models are required, add the following filter.
+    final KijiScannerOptions options = new KijiScannerOptions();
+    if (productionReadyOnly) {
+      final ColumnValueEqualsRowFilter productionReadyFilter =
+          new ColumnValueEqualsRowFilter(
+              ModelArtifact.MODEL_REPO_FAMILY,
+              ModelArtifact.PRODUCTION_READY_KEY,
+              new DecodedCell<Boolean>(Schema.create(Schema.Type.BOOLEAN), true));
+      options.setKijiRowFilter(productionReadyFilter);
+    }
+
+    // Gather all rows and emit.
+    final KijiRowScanner scanner = reader.getScanner(dataRequestBuilder.build(), options);
+    try {
+      for (final KijiRowData row : scanner) {
+        setOfModels.add(new ModelArtifact(row, fields));
+      }
+    } finally {
+      scanner.close();
+      reader.close();
+    }
+    return setOfModels;
   }
 }
