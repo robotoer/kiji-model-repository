@@ -1,0 +1,5 @@
+{
+  "port": 8080,
+  "repo_uri": "kiji://.env/default/",
+  "repo_scan_interval": 2
+}
