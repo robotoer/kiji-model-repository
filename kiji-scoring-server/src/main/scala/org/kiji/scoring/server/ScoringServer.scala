@@ -20,15 +20,23 @@
 package org.kiji.scoring.server
 
 import java.io.File
+
 import org.eclipse.jetty.deploy.DeploymentManager
 import org.eclipse.jetty.overlays.OverlayedAppProvider
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.handler.ContextHandlerCollection
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerCollection
+import org.kiji.modelrepo.KijiModelRepository
+import org.kiji.schema.Kiji
+import org.kiji.schema.KijiURI
+
+import org.kiji.modelrepo.KijiModelRepository
+import org.kiji.schema.Kiji
+import org.kiji.schema.KijiURI
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import java.io.StringWriter
 
 case class ServerConfiguration(port: Int, repo_uri: String, repo_scan_interval: Int)
 
@@ -52,7 +60,31 @@ object ScoringServer {
       return
     }
 
-    val config = getConfig
+    val server = getServer(null)
+    server.start()
+    server.join();
+  }
+
+  /**
+   * Constructs a Jetty Server instance configured using the conf/configuration.json.
+   * @param baseDir
+   * @return a constructed Jetty server.
+   */
+  def getServer(baseDir: File):Server = {
+
+    val confFile = new File(baseDir, String.format("%s/%s", CONF_FOLDER, CONF_FILE))
+    val config = getConfig(confFile)
+
+    val kijiURI = KijiURI.newBuilder(config.repo_uri).build()
+    val kiji = Kiji.Factory.open(kijiURI)
+    val kijiModelRepo = KijiModelRepository.open(kiji)
+
+    // Start the model lifecycle scanner thread that will scan the model repository
+    // for changes.
+    val lifeCycleScanner = new ModelRepoScanner(kijiModelRepo, config.repo_scan_interval, baseDir)
+    val lifeCycleScannerThread = new Thread(lifeCycleScanner)
+    lifeCycleScannerThread.start()
+
     val server = new Server(config.port)
     val handlers = new HandlerCollection()
 
@@ -60,7 +92,7 @@ object ScoringServer {
     val deploymentManager = new DeploymentManager()
     val overlayedProvider = new OverlayedAppProvider
 
-    overlayedProvider.setScanDir(new File(MODELS_FOLDER))
+    overlayedProvider.setScanDir(new File(baseDir, MODELS_FOLDER))
     // For now scan this directory once per second.
     overlayedProvider.setScanInterval(1)
 
@@ -73,15 +105,18 @@ object ScoringServer {
     server.setHandler(handlers);
     server.addBean(deploymentManager)
 
-    server.start();
-    server.join();
+    // Gracefully shutdown the deployment thread to let it finish anything that it may be doing
+    sys.ShutdownHookThread {
+      lifeCycleScanner.shutdown
+    }
+    server
   }
 
   /**
    * Checks that the server is started in the right location by ensuring the presence of a few key
    * directories under the conf, models and logs folder.
    *
-   * @returns whether or not the key set of folders exist or not.
+   * @return whether or not the key set of folders exist or not.
    */
   def startedInProperLocation: Boolean = {
     val filesToCheck = Array(CONF_FOLDER + "/" + CONF_FILE, MODELS_FOLDER + "/webapps",
@@ -100,11 +135,12 @@ object ScoringServer {
   /**
    * Returns the ServerConfiguration object constructed from conf/configuration.json.
    *
-   * @returns the ServerConfiguration object constructed from conf/configuration.json.
+   * @param confFile is the location of the configuration used to configure the server.
+   * @return the ServerConfiguration object constructed from conf/configuration.json.
    */
-  def getConfig: ServerConfiguration = {
+  def getConfig(confFile: File): ServerConfiguration = {
     val configMapper = new ObjectMapper
     configMapper.registerModule(DefaultScalaModule)
-    configMapper.readValue(new File(CONF_FOLDER, CONF_FILE), classOf[ServerConfiguration])
+    configMapper.readValue(confFile, classOf[ServerConfiguration])
   }
 }

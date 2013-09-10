@@ -19,33 +19,31 @@
 
 package org.kiji.scoring.server
 
-import org.kiji.express.avro.AvroKijiInputSpec
 import java.io.BufferedWriter
-import org.kiji.express.modeling.framework.ScoreProducer
-import org.kiji.schema.KijiURI
-import org.kiji.schema.Kiji
+import java.io.OutputStreamWriter
+import java.util.HashMap
+import javax.servlet.http.HttpServlet
+import javax.servlet.http.HttpServletRequest
+import javax.servlet.http.HttpServletResponse
+
+import org.apache.hadoop.conf.Configuration
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.common.base.Preconditions
+
+import org.kiji.express.avro.AvroInputSpec
 import org.kiji.express.avro.AvroModelDefinition
 import org.kiji.express.avro.AvroModelEnvironment
-import org.kiji.schema.KijiColumnName
 import org.kiji.express.modeling.config.ModelDefinition
-import org.kiji.schema.util.ToJson
-import org.kiji.schema.tools.ToolUtils
-import org.kiji.mapreduce.kvstore.impl.KeyValueStoreConfigValidator
-import org.kiji.express.modeling.config.KijiInputSpec
 import org.kiji.express.modeling.config.ModelEnvironment
 import org.kiji.modelrepo.ArtifactName
 import org.kiji.modelrepo.KijiModelRepository
-import java.util.HashMap
-import javax.servlet.http.HttpServletRequest
-import javax.servlet.http.HttpServlet
-import org.apache.hadoop.conf.Configuration
+import org.kiji.schema.Kiji
+import org.kiji.schema.KijiColumnName
+import org.kiji.schema.KijiURI
+import org.kiji.schema.tools.ToolUtils
 import org.kiji.schema.util.ProtocolVersion
-import javax.servlet.http.HttpServletResponse
-import com.fasterxml.jackson.databind.ObjectMapper
-import java.io.OutputStreamWriter
-import org.kiji.mapreduce.kvstore.KeyValueStore
+import org.kiji.schema.util.ToJson
 import org.kiji.web.KijiWebContext
-import com.google.common.base.Preconditions
 
 /**
  * Servlet implementation that executes the scoring phase of a model lifecycle deployed
@@ -83,11 +81,11 @@ class GenericScoringServlet extends HttpServlet {
 
       // TODO: Is is alright that I am getting the input spec directly through the Avro
       // record as opposed to through the KijiExpress wrapper classes?
-      val inputConfig: AvroKijiInputSpec = environmentAvro.getScoreEnvironment()
+      val inputConfig: AvroInputSpec = environmentAvro.getScoreEnvironment()
         .getInputSpec()
-        .asInstanceOf[AvroKijiInputSpec]
+        .asInstanceOf[AvroInputSpec]
 
-      mInputKijiURI = inputConfig.getTableUri()
+      mInputKijiURI = inputConfig.getKijiSpecification().getTableUri()
 
       val defAvro = ToJson.toJsonString(definitionAvro)
       val envAvro = ToJson.toJsonString(environmentAvro)
@@ -137,7 +135,7 @@ class GenericScoringServlet extends HttpServlet {
       kp.setup(ctx)
       kp.produce(rowData, ctx)
       val mapper = new ObjectMapper()
-      writer.write(mapper.valueToTree(ctx.getWrittenCells()).toString())
+      writer.write(mapper.valueToTree(ctx.getWrittenCell()).toString())
     }
 
     writer.close()

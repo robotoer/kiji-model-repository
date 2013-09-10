@@ -56,6 +56,7 @@ import org.kiji.schema.KijiRowScanner;
 import org.kiji.schema.KijiTable;
 import org.kiji.schema.KijiTableReader;
 import org.kiji.schema.KijiTableReader.KijiScannerOptions;
+import org.kiji.schema.KijiURI;
 import org.kiji.schema.avro.RowKeyFormat2;
 import org.kiji.schema.avro.TableLayoutDesc;
 import org.kiji.schema.filter.ColumnValueEqualsRowFilter;
@@ -64,7 +65,6 @@ import org.kiji.schema.filter.FormattedEntityIdRowFilter;
 import org.kiji.schema.filter.KijiRowFilter;
 import org.kiji.schema.layout.KijiTableLayout;
 import org.kiji.schema.util.ProtocolVersion;
-
 /**
  *
  * A class providing an API to install and access the model repository Kiji table.
@@ -181,8 +181,15 @@ public final class KijiModelRepository implements Closeable {
 
   @Override
   public void close() throws IOException {
-    mKijiMetaTable.close();
     mKijiTable.release();
+  }
+
+  /**
+   * Returns the URI of the model repository table.
+   * @return the URI of the model repository table.
+   */
+  public KijiURI getURI() {
+    return mKijiTable.getURI();
   }
 
   /**
@@ -678,6 +685,7 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
+<<<<<<< HEAD
    * Returns request fields from the model lifecycle from the model repository.
    *
    * @param artifact name of the model lifecycle
@@ -708,6 +716,8 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
+=======
+>>>>>>> 3fdcb3d... Initial commit of polling for model repo changes.
    * Check that every model in the model repository table is associated with a valid model location
    * in the model repository, i.e. that a valid model artifact is found at the model location.
    *
@@ -719,13 +729,6 @@ public final class KijiModelRepository implements Closeable {
    */
   public List<Exception> checkModelLocations(final boolean download) throws IOException {
     final List<Exception> issues = Lists.newArrayList();
-    final URI baseURI;
-    try {
-      baseURI = getCurrentBaseURI(mKijiMetaTable);
-    } catch (IOException e) {
-      issues.add(new ModelRepositoryConsistencyException("Base URI can not be acquired."));
-      return issues;
-    }
 
     // Read model repository table and validate each model location url.
     final KijiTableReader reader = mKijiTable.openTableReader();

@@ -31,6 +31,7 @@ import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Set;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -69,6 +70,8 @@ public class ModelLifeCycle {
   private final Map<Long, String> mMessages = Maps.newTreeMap();
   private final Map<Long, Boolean> mProductionReady = Maps.newTreeMap();
 
+  private final URI mBaseStorageURI;
+
   /**
    * Construct model lifecycle object from row data from the model repository table.
    *
@@ -91,6 +94,7 @@ public class ModelLifeCycle {
    *
    * @param model row data from the model repository table.
    * @param fieldsToRead read only these fields from the row data.
+   * @param baseStorageURI is the base URI of the underlying storage layer.
    * @throws IOException if the row data can not be properly accessed to retrieve values.
    */
   public ModelLifeCycle(final KijiRowData model,
@@ -112,7 +116,6 @@ public class ModelLifeCycle {
     if (!mUploaded) {
       throw new IOException("Requested model was not uploaded, therefore not deployed.");
     }
-
     if (fieldsToRead.contains(DEFINITION_KEY)) {
       try {
         mDefinition =
@@ -222,6 +225,17 @@ public class ModelLifeCycle {
     return mProductionReady;
   }
 
+  /**
+   * Returns the canonical name of a model life cycle which is the concatenation of the
+   * group + artifact + version. Specifically it's "group.artifact-version"
+   *
+   * @return the canonical name of a model life cycle which is the concatenation of the
+   *         group + artifact + version. Specifically it's "group.artifact-version"
+   */
+  public String getFullyQualifiedModelName() {
+    return getModelName(mGroupName, mArtifactName) + "-" + mArtifactVersion;
+  }
+
   @Override
   public String toString() {
     final StringBuilder modelStringBuilder = new StringBuilder();
@@ -254,7 +268,7 @@ public class ModelLifeCycle {
     while (null != productionReadyEntry || null != messagesEntry) {
       if ((null == productionReadyEntry)
           || ((null != messagesEntry)
-              && (productionReadyEntry.getKey().compareTo(messagesEntry.getKey()) >= 0))) {
+          && (productionReadyEntry.getKey().compareTo(messagesEntry.getKey()) >= 0))) {
         modelStringBuilder.append(String.format("%s [%d]: %s%n", "message",
             messagesEntry.getKey(),
             messagesEntry.getValue()));
@@ -281,36 +295,35 @@ public class ModelLifeCycle {
    * Check that this model lifecycle is associated with a valid model location
    * in the model repository, i.e. that a valid model artifact is found at the model location.
    *
-   * @param baseURI the base URI against which to resolve artifact path.
    * @param download set to true allows the method to download and validate the artifact file.
+   *
    * @return List of exceptions of inconsistent model locations over time.
    * @throws IOException if a temporary file can not be allocated for downloading model artifacts.
    */
   public List<Exception> checkModelLocation(
-      final URI baseURI,
       final boolean download) throws IOException {
     final List<Exception> issues = Lists.newArrayList();
-    final URL location = baseURI.resolve(this.getLocation()).toURL();
+    final URL location = mBaseStorageURI.resolve(this.getLocation()).toURL();
     // Currently only supports http and fs.
     // TODO: Support more protocols: ssh, etc.
     if (download) {
       final File artifactFile = File.createTempFile(this.getArtifactName().toString(), ".war");
       artifactFile.deleteOnExit();
       // Download artifact to artifactFile.
-      if (downloadArtifact(location, artifactFile)) {
+      if (downloadArtifact(artifactFile)) {
         // Parse artifactFile for validation.
         final ArtifactValidator artifactValidator = new WarArtifactValidator();
         if (!artifactValidator.isValid(artifactFile)) {
           issues.add(new ModelRepositoryConsistencyException(
               this.getArtifactName(),
               String.format("Artifact from %s is not a valid jar/war file.",
-              location.toString())));
+                  location.toString())));
         }
       } else {
         issues.add(new ModelRepositoryConsistencyException(
             this.getArtifactName(),
             String.format("Unable to retrieve artifact from %s.",
-            location.toString())));
+                location.toString())));
       }
       // Delete artifactFile as it's no use any more.
       artifactFile.delete();
@@ -322,7 +335,7 @@ public class ModelLifeCycle {
         issues.add(new ModelRepositoryConsistencyException(
             this.getArtifactName(),
             String.format("Unable to find artifact at %s.",
-            location.toString())));
+                location.toString())));
       } finally {
         if (null != artifactInputStream) {
           artifactInputStream.close();
@@ -335,11 +348,16 @@ public class ModelLifeCycle {
   /**
    * Copies artifact from URL to file on disk.
    *
-   * @param location URL of the source file
    * @param file target
+   *
    * @return true iff copy happen unexceptionally
+   * @throws IOException if there is a problem downloading the file.
    */
-  public static boolean downloadArtifact(final URL location, final File file) {
+  public boolean downloadArtifact(final File file) throws IOException {
+    final URI resolvedURI = URI.create(mBaseStorageURI.toString() + "/"
+       + mLocation);
+    final URL location = resolvedURI.toURL();
+
     LOG.info("Preparing to download model artifact to temporary location {}",
         file.getAbsolutePath());
     try {
@@ -348,5 +366,39 @@ public class ModelLifeCycle {
       return false;
     }
     return true;
+  }
+
+  @Override
+  public boolean equals(Object rhs) {
+    if (rhs == null) {
+      return false;
+    } else {
+      return (rhs instanceof ModelArtifact && ((ModelArtifact) rhs).getFullyQualifiedModelName()
+          .equals(this.getFullyQualifiedModelName()));
+    }
+  }
+
+  @Override
+  public int hashCode() {
+    return getFullyQualifiedModelName().hashCode();
+  }
+
+  /**
+   * Returns the canonical name of a model life cycle given the group and artifact name. This
+   * is here as the layout supports a single name field but other parts of the system support
+   * the separate group/artifact names.
+   *
+   * @param groupName the group name of the lifecycle.
+   * @param artifactName the artifact name of the lifecycle.
+   * @return the canonical name of the model lifecycle suitable for storage in the Kiji table
+   *         storing deployed lifecycles.
+   */
+  public static String getModelName(String groupName, String artifactName) {
+    Preconditions.checkNotNull(groupName);
+    Preconditions.checkNotNull(artifactName);
+    Preconditions.checkArgument(!groupName.isEmpty(), "Group name must be nonempty string.");
+    Preconditions.checkArgument(!artifactName.isEmpty(),
+        "Artifact name must be nonempty string.");
+    return (groupName + "." + artifactName).intern();
   }
 }
