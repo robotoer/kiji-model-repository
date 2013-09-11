@@ -84,8 +84,7 @@ class GenericScoringServlet extends HttpServlet {
       // TODO: Is is alright that I am getting the input spec directly through the Avro
       // record as opposed to through the KijiExpress wrapper classes?
       val inputConfig: AvroKijiInputSpec = environmentAvro.getScoreEnvironment()
-        .getInputConfig()
-        .getSpecification()
+        .getInputSpec()
         .asInstanceOf[AvroKijiInputSpec]
 
       mInputKijiURI = inputConfig.getTableUri()
@@ -106,7 +105,7 @@ class GenericScoringServlet extends HttpServlet {
     val writer = new BufferedWriter(new OutputStreamWriter(resp.getOutputStream()))
     val command = req.getParameter("command")
 
-    val inputSpec = mModelEnvironment.scoreEnvironment.get.inputConfig.asInstanceOf[KijiInputSpec]
+//    val inputSpec = mModelEnvironment.scoreEnvironment.get.inputConfig.asInstanceOf[KijiInputSpec]
 
     val kijiURI = KijiURI.newBuilder(mInputKijiURI).build()
     val kiji = Kiji.Factory.open(kijiURI)
@@ -120,8 +119,8 @@ class GenericScoringServlet extends HttpServlet {
       val kp = new ScoreProducer()
       val conf = new Configuration()
 
-      conf.set(ScoreProducer.modelDefinitionConfKey, mModelDefinition.toJson())
-      conf.set(ScoreProducer.modelEnvironmentConfKey, mModelEnvironment.toJson())
+      conf.set(ScoreProducer.modelDefinitionConfKey, mModelDefinition.toJson)
+      conf.set(ScoreProducer.modelEnvironmentConfKey, mModelEnvironment.toJson)
       kp.setConf(conf)
 
       val boundKVStores = new HashMap[String, KeyValueStore[_, _]]
