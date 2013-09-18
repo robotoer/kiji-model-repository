@@ -25,13 +25,13 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
 import org.kiji.common.flags.Flag;
+import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
-import org.kiji.modelrepo.ModelArtifact;
+import org.kiji.modelrepo.ModelLifeCycle;
 import org.kiji.schema.KConstants;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiURI;
 import org.kiji.schema.tools.BaseTool;
-import org.kiji.schema.util.ProtocolVersion;
 
 /**
  * Model repository consistency update tool set the production ready flag
@@ -39,13 +39,8 @@ import org.kiji.schema.util.ProtocolVersion;
  */
 public final class UpdateModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
-  /** Artifact's group name. */
-  private String mArtifactGroupName = null;
-
   /** Artifact's name. **/
-  private String mArtifactName = null;
-
-  private ProtocolVersion mVersion = null;
+  private ArtifactName mArtifact = null;
 
   @Flag(name="kiji", usage="Name of the Kiji instance housing the model repository.")
   private String mInstanceName = KConstants.DEFAULT_INSTANCE_URI;
@@ -87,38 +82,23 @@ public final class UpdateModelRepoTool extends BaseTool implements KijiModelRepo
   @Override
   protected int run(List<String> args) throws Exception {
     Preconditions.checkArgument(args.size() == 1, "Must specify model with: "
-        + "update <group name>.<artifact name>-<version> [--flags]");
-    // Names look like: org.mycompany.package.artifact-1.0.0 where
-    // groupName=org.mycompany.package
-    // artifactName=artifact
-    // version=1.0.0
-    final int hyphenPosition = args.get(0).indexOf("-");
-    final String name;
-    Preconditions.checkArgument(hyphenPosition >= 0,
+        + "update <package>.<identifier>-<version> [--flags]");
+    mArtifact = new ArtifactName(args.get(0));
+    Preconditions.checkArgument(mArtifact.isVersionSpecified(),
         "Must specify version. E.g. org.myorg.myproject.artifact-1.2.3");
-    // TODO: Determine if this is the right version to put in.
-    // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
-    mVersion = ProtocolVersion.parse(args.get(0).substring(hyphenPosition + 1));
-    name = args.get(0).substring(0, hyphenPosition);
 
-    final int lastPeriodPosition = name.lastIndexOf(".");
-    Preconditions.checkArgument(lastPeriodPosition >= 0,
-        "Artifact must specify valid group name and artifact name of the form"
-        + "<group name>.<artifact name>");
-    mArtifactGroupName = name.substring(0, lastPeriodPosition);
-    mArtifactName = name.substring(lastPeriodPosition + 1);
 
     final Kiji kijiInstance = Kiji.Factory.open(mInstanceURI);
     final KijiModelRepository kmr = KijiModelRepository.open(kijiInstance);
     try {
-      kmr.setProductionReady(mArtifactGroupName,
-          mArtifactName,
-          mVersion,
+      kmr.setProductionReady(
+          mArtifact,
+          mArtifact.getVersion(),
           mProductionReady,
           mMessage);
-      ModelArtifact model = new ModelArtifact(
-          kmr.getModelLifeCycle(mArtifactGroupName, mArtifactName, mVersion),
-          Sets.newHashSet(ModelArtifact.PRODUCTION_READY_KEY, ModelArtifact.MESSAGES_KEY));
+      ModelLifeCycle model = kmr.getModelLifeCycle(
+          mArtifact,
+          Sets.newHashSet(ModelLifeCycle.PRODUCTION_READY_KEY, ModelLifeCycle.MESSAGES_KEY));
       getPrintStream().println(model);
     } finally {
       kmr.close();

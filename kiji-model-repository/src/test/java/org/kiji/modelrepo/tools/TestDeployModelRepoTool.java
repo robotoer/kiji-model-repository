@@ -43,12 +43,12 @@ import org.junit.Test;
 
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
-import org.kiji.modelrepo.ModelArtifact;
+import org.kiji.modelrepo.ModelLifeCycle;
 import org.kiji.modelrepo.TestUtils;
 import org.kiji.schema.EntityId;
 import org.kiji.schema.Kiji;
-import org.kiji.schema.KijiRowData;
 import org.kiji.schema.KijiTable;
 import org.kiji.schema.KijiTableWriter;
 import org.kiji.schema.tools.BaseTool;
@@ -95,10 +95,8 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // 1) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
     args.add(artifactName);
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=" + makeDependencyString(dependencies));
@@ -115,17 +113,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
 
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
-
-    KijiRowData lifeCycleRow = repo.getModelLifeCycle(groupName, artifactName,
-        ProtocolVersion.parse("0.0.1"));
-    Assert.assertTrue(lifeCycleRow
-        .containsColumn(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY));
+    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+        new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY)
-            .toString());
-    String relativeLocation = lifeCycleRow
-        .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY).toString();
+        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = lifeCycleRow.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
 
@@ -138,15 +130,12 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // 1) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
-    args.add(artifactName);
+    args.add(String.format("%s-%s", artifactName, "0.0.1"));
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=" + makeDependencyString(dependencies));
     args.add("--deps-resolver=raw");
-    args.add("--version=0.0.1");
     args.addAll(getBaselineArgs());
 
     int status = runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
@@ -160,19 +149,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    KijiRowData lifeCycleRow = repo.getModelLifeCycle(groupName, artifactName,
-        ProtocolVersion.parse("0.0.1"));
-    Assert.assertTrue(lifeCycleRow.containsColumn(
-        ModelArtifact.MODEL_REPO_FAMILY,
-        ModelArtifact.LOCATION_KEY));
+    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+        new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY)
-            .toString());
-    String relativeLocation =
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY)
-            .toString();
+        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = lifeCycleRow.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
 
@@ -186,17 +167,15 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
     writer.close();
     table.release();
 
     // 2) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
     args.add(artifactName);
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=" + makeDependencyString(dependencies));
@@ -214,16 +193,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    KijiRowData lifeCycleRow = repo.getModelLifeCycle(groupName, artifactName,
-        ProtocolVersion.parse("1.0.1"));
-    Assert.assertTrue(
-        lifeCycleRow.containsColumn(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY));
+    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+        new ArtifactName(artifactName, ProtocolVersion.parse("1.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY)
-            .toString());
-    String relativeLocation = lifeCycleRow
-        .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY).toString();
+        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = lifeCycleRow.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/1.0.1/sample_model-1.0.1.war",
         relativeLocation);
 
@@ -237,22 +211,19 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
     writer.close();
     table.release();
 
     // 2) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
-    args.add(artifactName);
+    args.add(String.format("%s-%s", artifactName, "1.0.1"));
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=" + makeDependencyString(dependencies));
     args.add("--deps-resolver=raw");
-    args.add("--version=1.0.1");
     args.addAll(getBaselineArgs());
 
     int status = runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
@@ -266,16 +237,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    KijiRowData lifeCycleRow = repo.getModelLifeCycle(groupName, artifactName,
-        ProtocolVersion.parse("1.0.1"));
-    Assert.assertTrue(lifeCycleRow
-        .containsColumn(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY));
+    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+        new ArtifactName(artifactName, ProtocolVersion.parse("1.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY)
-            .toString());
-    String relativeLocation = lifeCycleRow
-        .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY).toString();
+        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = lifeCycleRow.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/1.0.1/sample_model-1.0.1.war",
         relativeLocation);
 
@@ -290,23 +256,20 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, "stuff");
-    writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.UPLOADED_KEY, true);
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
     writer.close();
     table.release();
 
     // 2) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
-    args.add(artifactName);
+    args.add(String.format("%s-%s", artifactName, "1.0.0"));
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=" + makeDependencyString(dependencies));
     args.add("--deps-resolver=raw");
-    args.add("--version=1.0.0");
     args.addAll(getBaselineArgs());
 
     try {
@@ -322,17 +285,14 @@ public class TestDeployModelRepoTool extends KijiToolTest {
   public void testFailToDeployWhenArtifactDoesntExist() throws Exception {
     // 2) Setup the artifact
     List<File> dependencies = TestUtils.getDependencies(5);
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
 
     String bogusFile = String.format("non-existant-artifact-%d.jar", System.currentTimeMillis());
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
-    args.add(artifactName);
+    args.add(String.format("%s-%s", artifactName, "1.0.1"));
     args.add(bogusFile);
     args.add("--deps=" + makeDependencyString(dependencies));
     args.add("--deps-resolver=raw");
-    args.add("--version=1.0.0");
     args.addAll(getBaselineArgs());
 
     try {
@@ -348,10 +308,8 @@ public class TestDeployModelRepoTool extends KijiToolTest {
   public void testShouldDeployNewModelToBlankTableUsingPom() throws Exception {
     // 1) Setup the artifact
     File artifactJar = TestUtils.createFakeJar("artifact");
-    String groupName = "org.kiji.test";
-    String artifactName = "sample_model";
+    String artifactName = "org.kiji.test.sample_model";
     List<String> args = Lists.newArrayList();
-    args.add(groupName);
     args.add(artifactName);
     args.add(artifactJar.getAbsolutePath());
     args.add("--deps=src/test/resources/pom.xml");
@@ -369,16 +327,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    KijiRowData lifeCycleRow = repo.getModelLifeCycle(groupName, artifactName,
-        ProtocolVersion.parse("0.0.1"));
-    Assert.assertTrue(
-        lifeCycleRow.containsColumn(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY));
+    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+        new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow
-            .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY)
-            .toString());
-    String relativeLocation = lifeCycleRow
-        .getMostRecentValue(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY).toString();
+        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = lifeCycleRow.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
     repo.close();
@@ -394,6 +347,103 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     }
     jarIs.close();
     Assert.assertEquals(5, dependentJarsFound);
+  }
+
+  // 8) Test deploying an artifact using source artifact's location.
+  @Test
+  public void testShouldDeployWithExistingArtifact() throws Exception {
+    // 1) Populate the table with some stuff
+    KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
+    KijiTableWriter writer = table.openTableWriter();
+    EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+    writer.close();
+
+    // 2) Setup the new artifact and tool arguments.
+    String artifactName = "org.kiji.test.sample_model_two";
+
+    List<String> args = Lists.newArrayList();
+    args.add(String.format("%s-%s", artifactName, "1.0.0"));
+    args.add("org.kiji.test.sample_model-1.0.0");
+    args.add("--existing-artifact");
+    args.addAll(getBaselineArgs());
+
+    int status = runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
+    Assert.assertEquals(BaseTool.SUCCESS, status);
+    KijiModelRepository modelrepo = KijiModelRepository.open(mKiji);
+    ModelLifeCycle modelOne = modelrepo.getModelLifeCycle(
+        new ArtifactName("org.kiji.test.sample_model", ProtocolVersion.parse("1.0.0")));
+    ModelLifeCycle modelTwo = modelrepo.getModelLifeCycle(
+        new ArtifactName("org.kiji.test.sample_model_two", ProtocolVersion.parse("1.0.0")));
+    Assert.assertEquals(modelOne.getLocation(), modelTwo.getLocation());
+    modelrepo.close();
+  }
+
+  // 9) Test deploying an artifact using nonexistent source artifact.
+  @Test
+  public void testFailsToDeployWithNonexistentSourceArtifact() throws Exception {
+    // 2) Setup the new artifact and tool arguments.
+    String artifactName = "org.kiji.test.sample_model_two";
+
+    List<String> args = Lists.newArrayList();
+    args.add(String.format("%s-%s", artifactName, "1.0.0"));
+    args.add("org.kiji.test.sample_model-1.0.0");
+    args.add("--existing-artifact");
+    args.addAll(getBaselineArgs());
+    try {
+      runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
+      Assert.fail("Deploy passed when it should have failed");
+    } catch (IOException ioe) {
+      Assert.assertEquals("Requested model could not be extracted.", ioe.getMessage());
+    }
+  }
+
+  // 10) Test deploying an artifact using nonexistent source artifact's location.
+  @Test
+  public void testFailsToDeployWithNonexistentSourceArtifactLocation() throws Exception {
+    // 1) Populate the table with some stuff
+    KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
+    KijiTableWriter writer = table.openTableWriter();
+    EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
+    // Missing location.
+    // writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+    writer.close();
+
+    // 2) Setup the new artifact and tool arguments.
+    String artifactName = "org.kiji.test.sample_model_two";
+
+    List<String> args = Lists.newArrayList();
+    args.add(String.format("%s-%s", artifactName, "1.0.0"));
+    args.add("org.kiji.test.sample_model-1.0.0");
+    args.add("--existing-artifact");
+    args.addAll(getBaselineArgs());
+    try {
+      runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
+      Assert.fail("Deploy passed when it should have failed.");
+    } catch (IOException ioe) {
+      Assert.assertEquals("Following field was not extracted: location", ioe.getMessage());
+    }
+  }
+
+  // 11) Test deploying an artifact using invalid source artifact identifier.
+  @Test
+  public void testFailsToDeployWithInvalidArtifactIdentifier() throws Exception {
+    // 2) Setup the new artifact and tool arguments.
+    String artifactName = "org.kiji.test.sample_model_two";
+
+    List<String> args = Lists.newArrayList();
+    args.add(String.format("%s-%s", artifactName, "1.0.0"));
+    args.add("org.kiji.test.sample_model");
+    args.add("--existing-artifact");
+    args.addAll(getBaselineArgs());
+    try {
+      runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
+      Assert.fail("Deploy passed when it should have failed.");
+    } catch (IllegalArgumentException iae) {
+      Assert.assertEquals("Source artifact must specify version.", iae.getMessage());
+    }
   }
 
   //------------------------------------------------------------------------------------------------
@@ -501,9 +551,8 @@ public class TestDeployModelRepoTool extends KijiToolTest {
       final File artifactFile = File.createTempFile("artifact", ".jar");
 
       // Deploy fake mode lifecycle
-      mModelRepository.deployModelLifecycle("org.kiji.fake",
-          "project",
-          ProtocolVersion.parse("1.0.0"),
+      mModelRepository.deployModelLifecycle(
+          new ArtifactName("org.kiji.fake.project-1.0.0"),
           artifactFile,
           Lists.<File>newArrayList(),
           modelDefinition,

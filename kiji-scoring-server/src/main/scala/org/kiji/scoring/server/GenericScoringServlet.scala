@@ -33,6 +33,7 @@ import org.kiji.schema.tools.ToolUtils
 import org.kiji.mapreduce.kvstore.impl.KeyValueStoreConfigValidator
 import org.kiji.express.modeling.config.KijiInputSpec
 import org.kiji.express.modeling.config.ModelEnvironment
+import org.kiji.modelrepo.ArtifactName
 import org.kiji.modelrepo.KijiModelRepository
 import java.util.HashMap
 import javax.servlet.http.HttpServletRequest
@@ -74,12 +75,11 @@ class GenericScoringServlet extends HttpServlet {
       val modelName = getServletConfig().getInitParameter(MODEL_GROUP)
       val modelArtifact = getServletConfig().getInitParameter(MODEL_ARTIFACT)
       val modelVersion = ProtocolVersion.parse(getServletConfig().getInitParameter(MODEL_VERSION))
-      val lifeCycleRow = modelRepo.getModelLifeCycle(modelName, modelArtifact, modelVersion)
+      val lifeCycleRow = modelRepo.getModelLifeCycle(
+          new ArtifactName(String.format("%s.%s", modelName, modelArtifact), modelVersion))
 
-      val definitionAvro: AvroModelDefinition = lifeCycleRow.getMostRecentValue("model",
-        "definition")
-      val environmentAvro: AvroModelEnvironment = lifeCycleRow.getMostRecentValue("model",
-        "environment")
+      val definitionAvro: AvroModelDefinition = lifeCycleRow.getDefinition()
+      val environmentAvro: AvroModelEnvironment = lifeCycleRow.getEnvironment()
 
       // TODO: Is is alright that I am getting the input spec directly through the Avro
       // record as opposed to through the KijiExpress wrapper classes?

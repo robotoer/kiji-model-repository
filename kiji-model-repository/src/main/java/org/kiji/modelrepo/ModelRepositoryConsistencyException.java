@@ -19,8 +19,6 @@
 
 package org.kiji.modelrepo;
 
-import org.kiji.schema.util.ProtocolVersion;
-
 /**
  * Tracks consistency issues in the model repository.
  */
@@ -29,21 +27,15 @@ public class ModelRepositoryConsistencyException extends Exception {
   private static final long serialVersionUID = 1L;
 
   /**
-   * Construct model repository consistency exception with artifact name, version, and
-   * custom message.
+   * Construct model repository consistency exception with artifact name and custom message.
    *
-   * @param artifactName string name of artifact.
-   * @param artifactVersion protocol version of the artifact
+   * @param artifact string name of artifact.
    * @param message custom message
    */
   public ModelRepositoryConsistencyException(
-      final String artifactName,
-      final ProtocolVersion artifactVersion,
+      final ArtifactName artifact,
       final String message) {
-    super(String.format("%s-%s: %s",
-        artifactName,
-        artifactVersion.toCanonicalString(),
-        message));
+    super(String.format("%s: %s", artifact, message));
   }
 
   /**

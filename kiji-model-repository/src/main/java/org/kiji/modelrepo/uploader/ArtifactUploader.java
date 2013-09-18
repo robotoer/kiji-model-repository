@@ -23,7 +23,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 
-import org.kiji.schema.util.ProtocolVersion;
+import org.kiji.modelrepo.ArtifactName;
 
 /**
  * Defines an interface for uploading artifacts to another location.
@@ -31,18 +31,18 @@ import org.kiji.schema.util.ProtocolVersion;
 public interface ArtifactUploader {
 
   /**
-   * Uploads an artifact to another location. An artifact is defined by a triplet of groupName,
-   * artifactName and version. This follows similar to the Maven convention of artifact naming.
+   * Uploads an artifact to another location.
+   * This follows similar to the Maven convention of artifact naming.
    *
-   * @param groupName is the user specified name of the group to which this artifact belongs.
-   * @param artifactName is the name of the artifact itself.
-   * @param version is the version of the artifact.
+   * @param artifact name of the artifact which is being uploaded.
    * @param baseURI The base URI of the storage layer.
    * @param artifactPath The local file to upload.
    * @return relative location of where the file was uploaded.
    *
    * @throws IOException if there is an exception uploading the artifact.
    */
-  String uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
-      URI baseURI, File artifactPath) throws IOException;
+  String uploadArtifact(
+      ArtifactName artifact,
+      URI baseURI,
+      File artifactPath) throws IOException;
 }

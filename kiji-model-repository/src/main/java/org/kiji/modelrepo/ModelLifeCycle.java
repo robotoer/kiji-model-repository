@@ -33,6 +33,7 @@ import java.util.Set;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
@@ -48,7 +49,7 @@ import org.kiji.schema.util.ProtocolVersion;
 /**
  * Class to work with model artifact metadata sourced from the model repository table.
  */
-public class ModelArtifact {
+public class ModelLifeCycle {
 
   public static final String DEFINITION_KEY = "definition";
   public static final String ENVIRONMENT_KEY = "environment";
@@ -58,11 +59,10 @@ public class ModelArtifact {
   public static final String UPLOADED_KEY = "uploaded";
   public static final String MODEL_REPO_FAMILY = "model";
 
-  private static final Logger LOG = LoggerFactory.getLogger(ModelArtifact.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ModelLifeCycle.class);
 
-  private final String mArtifactName;
-  private final String mGroupName;
-  private final ProtocolVersion mArtifactVersion;
+  private final boolean mUploaded;
+  private final ArtifactName mArtifact;
   private final String mLocation;
   private final AvroModelDefinition mDefinition;
   private final AvroModelEnvironment mEnvironment;
@@ -70,81 +70,111 @@ public class ModelArtifact {
   private final Map<Long, Boolean> mProductionReady = Maps.newTreeMap();
 
   /**
-   * Construct model artifact object from row data from the model repository table.
+   * Construct model lifecycle object from row data from the model repository table.
+   *
+   * @param model row data from the model repository table.
+   * @throws IOException if the row data can not be properly accessed to retrieve values.
+   */
+  public ModelLifeCycle(final KijiRowData model) throws IOException {
+    this(model, Sets.newHashSet(
+        DEFINITION_KEY,
+        ENVIRONMENT_KEY,
+        LOCATION_KEY,
+        MESSAGES_KEY,
+        PRODUCTION_READY_KEY));
+  }
+
+  /**
+   * Construct model lifecycle object from row data and required fields
+   * from the model repository table. Proper construction of ModelArtifact
+   * requires UPLOADED_KEY field set to true.
    *
    * @param model row data from the model repository table.
    * @param fieldsToRead read only these fields from the row data.
    * @throws IOException if the row data can not be properly accessed to retrieve values.
    */
-  public ModelArtifact(final KijiRowData model,
+  public ModelLifeCycle(final KijiRowData model,
       final Set<String> fieldsToRead) throws IOException {
-    mArtifactVersion = ProtocolVersion.parse(model.getEntityId().getComponentByIndex(1).toString());
-    final String entityString = model.getEntityId().getComponentByIndex(0);
-    final int lastPeriod = entityString.lastIndexOf(".");
+
+    // Load name and version.
+    mArtifact = new ArtifactName(
+        model.getEntityId().getComponentByIndex(0).toString(),
+        ProtocolVersion.parse(model.getEntityId().getComponentByIndex(1).toString()));
 
     // Load name, definition, environment, and location.
-    mGroupName = entityString.substring(0, lastPeriod);
-    mArtifactName = entityString.substring(lastPeriod + 1);
+
+    // Every row must have the uploaded field specified and it must be true.
+    try {
+      mUploaded = model.<Boolean>getMostRecentValue(MODEL_REPO_FAMILY, UPLOADED_KEY);
+    } catch (final Exception e) {
+      throw new IOException("Requested model could not be extracted.");
+    }
+    if (!mUploaded) {
+      throw new IOException("Requested model was not uploaded, therefore not deployed.");
+    }
+
     if (fieldsToRead.contains(DEFINITION_KEY)) {
-      mDefinition =
-          (AvroModelDefinition) model.getMostRecentValue(MODEL_REPO_FAMILY, DEFINITION_KEY);
+      try {
+        mDefinition =
+            (AvroModelDefinition) model.getMostRecentValue(MODEL_REPO_FAMILY, DEFINITION_KEY);
+      } catch (final Exception e) {
+        throw new IOException("Following field was not extracted: " + DEFINITION_KEY);
+      }
     } else {
       mDefinition = null;
     }
     if (fieldsToRead.contains(ENVIRONMENT_KEY)) {
-      mEnvironment =
-          (AvroModelEnvironment) model.getMostRecentValue(MODEL_REPO_FAMILY, ENVIRONMENT_KEY);
+      try {
+        mEnvironment =
+            (AvroModelEnvironment) model.getMostRecentValue(MODEL_REPO_FAMILY, ENVIRONMENT_KEY);
+      } catch (final Exception e) {
+        throw new IOException("Following field was not extracted: " + ENVIRONMENT_KEY);
+      }
     } else {
       mEnvironment = null;
     }
     if (fieldsToRead.contains(LOCATION_KEY)) {
-      mLocation = model.getMostRecentValue(MODEL_REPO_FAMILY, LOCATION_KEY).toString();
+      try {
+        mLocation = model.getMostRecentValue(MODEL_REPO_FAMILY, LOCATION_KEY).toString();
+      } catch (final Exception e) {
+        throw new IOException("Following field was not extracted: " + LOCATION_KEY);
+      }
     } else {
       mLocation = null;
     }
     // Load production_ready flag.
     if (fieldsToRead.contains(PRODUCTION_READY_KEY)) {
-      final NavigableMap<Long, Boolean> productionReadyValues =
-          model.getValues(MODEL_REPO_FAMILY, PRODUCTION_READY_KEY);
-      for (final Entry<Long, Boolean> cell : productionReadyValues.entrySet()) {
-        mProductionReady.put(cell.getKey(), cell.getValue());
+      try {
+        final NavigableMap<Long, Boolean> productionReadyValues =
+            model.getValues(MODEL_REPO_FAMILY, PRODUCTION_READY_KEY);
+        for (final Entry<Long, Boolean> cell : productionReadyValues.entrySet()) {
+          mProductionReady.put(cell.getKey(), cell.getValue());
+        }
+      } catch (final Exception e) {
+        throw new IOException("Following field was not extracted: " + PRODUCTION_READY_KEY);
       }
     }
     // Load messages.
     if (fieldsToRead.contains(MESSAGES_KEY)) {
-      final NavigableMap<Long, CharSequence> messagesValues =
-          model.getValues(MODEL_REPO_FAMILY, MESSAGES_KEY);
-      for (final Entry<Long, CharSequence> cell : messagesValues.entrySet()) {
-        mMessages.put(cell.getKey(), cell.getValue().toString());
+      try {
+        final NavigableMap<Long, CharSequence> messagesValues =
+            model.getValues(MODEL_REPO_FAMILY, MESSAGES_KEY);
+        for (final Entry<Long, CharSequence> cell : messagesValues.entrySet()) {
+          mMessages.put(cell.getKey(), cell.getValue().toString());
+        }
+      } catch (final Exception e) {
+        throw new IOException("Following field was not extracted: " + MESSAGES_KEY);
       }
     }
   }
 
   /**
-   * Gets artifact's name.
+   * Gets lifecycle artifact's name.
    *
    * @return artifact name.
    */
-  public String getArtifactName() {
-    return mArtifactName;
-  }
-
-  /**
-   * Gets artifact's group name.
-   *
-   * @return group name.
-   */
-  public String getGroupName() {
-    return mGroupName;
-  }
-
-  /**
-   * Gets artifact's model version.
-   *
-   * @return model version.
-   */
-  public ProtocolVersion getModelVersion() {
-    return mArtifactVersion;
+  public ArtifactName getArtifactName() {
+    return mArtifact;
   }
 
   /**
@@ -157,7 +187,7 @@ public class ModelArtifact {
   }
 
   /**
-   * Gets artifacts model definition.
+   * Gets lifecycle's model definition.
    *
    * @return model definition.
    */
@@ -166,7 +196,7 @@ public class ModelArtifact {
   }
 
   /**
-   * Gets artifacts model environment.
+   * Gets lifecycle's model environment.
    *
    * @return model environment.
    */
@@ -175,7 +205,7 @@ public class ModelArtifact {
   }
 
   /**
-   * Gets a map of the messages associated with this artifact, keyed by timestamp.
+   * Gets a map of the messages associated with this lifecycle, keyed by timestamp.
    *
    * @return map of messages keyed by timestamp.
    */
@@ -184,7 +214,7 @@ public class ModelArtifact {
   }
 
   /**
-   * Gets a map of the production_ready flags associated with this artifact, keyed by timestamp.
+   * Gets a map of the production_ready flags associated with this lifecycle, keyed by timestamp.
    *
    * @return map of production_ready flags keyed by timestamp.
    */
@@ -195,9 +225,8 @@ public class ModelArtifact {
   @Override
   public String toString() {
     final StringBuilder modelStringBuilder = new StringBuilder();
-    modelStringBuilder.append(String.format("group: %s%n", getGroupName()));
-    modelStringBuilder.append(String.format("artifact: %s%n", getArtifactName()));
-    modelStringBuilder.append(String.format("version: %s%n", getModelVersion()));
+    modelStringBuilder.append(String.format("name: %s%n", mArtifact.getName()));
+    modelStringBuilder.append(String.format("version: %s%n", mArtifact.getVersion()));
 
     // Print the fields which were requested by the user.
     if (null != getLocation()) {
@@ -249,7 +278,7 @@ public class ModelArtifact {
   }
 
   /**
-   * Check that this model artifact is associated with a valid model location
+   * Check that this model lifecycle is associated with a valid model location
    * in the model repository, i.e. that a valid model artifact is found at the model location.
    *
    * @param baseURI the base URI against which to resolve artifact path.
@@ -265,11 +294,7 @@ public class ModelArtifact {
     // Currently only supports http and fs.
     // TODO: Support more protocols: ssh, etc.
     if (download) {
-      final File artifactFile = File.createTempFile(
-          String.format("%s.%s-%s-", this.getGroupName(),
-              this.getArtifactName(),
-              this.getModelVersion()),
-          ".war");
+      final File artifactFile = File.createTempFile(this.getArtifactName().toString(), ".war");
       artifactFile.deleteOnExit();
       // Download artifact to artifactFile.
       if (downloadArtifact(location, artifactFile)) {
@@ -277,15 +302,13 @@ public class ModelArtifact {
         final ArtifactValidator artifactValidator = new WarArtifactValidator();
         if (!artifactValidator.isValid(artifactFile)) {
           issues.add(new ModelRepositoryConsistencyException(
-              String.format("%s.%s", this.getGroupName(), this.getArtifactName()),
-              this.getModelVersion(),
+              this.getArtifactName(),
               String.format("Artifact from %s is not a valid jar/war file.",
               location.toString())));
         }
       } else {
         issues.add(new ModelRepositoryConsistencyException(
-            String.format("%s.%s", this.getGroupName(), this.getArtifactName()),
-            this.getModelVersion(),
+            this.getArtifactName(),
             String.format("Unable to retrieve artifact from %s.",
             location.toString())));
       }
@@ -297,8 +320,7 @@ public class ModelArtifact {
         artifactInputStream = location.openStream();
       } catch (Exception e) {
         issues.add(new ModelRepositoryConsistencyException(
-            String.format("%s.%s", this.getGroupName(), this.getArtifactName()),
-            this.getModelVersion(),
+            this.getArtifactName(),
             String.format("Unable to find artifact at %s.",
             location.toString())));
       } finally {

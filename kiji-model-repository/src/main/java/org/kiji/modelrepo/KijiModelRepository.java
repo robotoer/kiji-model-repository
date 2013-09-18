@@ -136,14 +136,14 @@ public final class KijiModelRepository implements Closeable {
 
   private static final KijiRowFilter UPLOADED_MODEL_FILTER =
       new ColumnValueEqualsRowFilter(
-          ModelArtifact.MODEL_REPO_FAMILY,
-          ModelArtifact.UPLOADED_KEY,
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.UPLOADED_KEY,
           new DecodedCell<Boolean>(Schema.create(Schema.Type.BOOLEAN), true));
 
   private static final KijiRowFilter PRODUCTION_READY_FILTER =
       new ColumnValueEqualsRowFilter(
-          ModelArtifact.MODEL_REPO_FAMILY,
-          ModelArtifact.PRODUCTION_READY_KEY,
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.PRODUCTION_READY_KEY,
           new DecodedCell<Boolean>(Schema.create(Schema.Type.BOOLEAN), true));
 
   /**
@@ -380,14 +380,102 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Deploys a new model lifecycle.
+   * "Reserves" a new row by checking if the row exists.
+   * If the row doesn't exist, then sets the "model:uploaded" field to false.
    *
-   * @param groupName that identifies this model lifecycle
-   * @param artifactName that identifies this model lifecycle
-   * @param version of this particular instance of a model lifecycle. If this is null,
-   *        the version will be set automatically to 1 revision higher than the previously deployed
-   *        version of the lifecycle.
-   * @param artifactFile is the actual artifact to upload
+   * @param artifact name of the model lifecycle.
+   * @throws IOException if the uploaded field for specified model name was not properly written.
+   */
+  private void reserveNewRow(final ArtifactName artifact) throws IOException {
+    final EntityId eid = mKijiTable.getEntityId(artifact.getName(),
+        artifact.getVersion().toCanonicalString());
+    final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
+    try {
+      // Allocate and lock row by setting "model:uploaded" as false.
+      putter.begin(eid);
+      putter.put(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, false);
+      // Check that row doesn't exist (check uploaded cell) and commit.
+      if (!putter.checkAndCommit(ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.UPLOADED_KEY,
+          null)) {
+        throw new IllegalArgumentException(
+            String.format("Error Version %s exists.", artifact.getVersion().toCanonicalString()));
+      }
+    } finally {
+      putter.close();
+    }
+  }
+
+  /**
+   * Writes to a reserved row in the model repository table.
+   *
+   * @param artifact name of the model lifecycle.
+   * @param definition AvroModelDefinition of model lifecycle
+   * @param environment AvroModelEnvironment of model lifecycle
+   * @param location where the code artifact is uploaded.
+   * @param productionReady is true iff model lifecycle is ready for scoring
+   * @param message (optional) latest update message of the model lifecycle.
+   * @throws IOException if the row was not written properly to the model repository table.
+   */
+  private void writeRow(
+      final ArtifactName artifact,
+      final AvroModelDefinition definition,
+      final AvroModelEnvironment environment,
+      final String location,
+      final boolean productionReady,
+      final String message) throws IOException {
+    final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
+    try {
+      final EntityId eid = mKijiTable.getEntityId(artifact.getName(),
+          artifact.getVersion().toCanonicalString());
+      putter.begin(eid);
+      putter.put(
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.DEFINITION_KEY,
+          definition);
+      putter.put(
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.ENVIRONMENT_KEY,
+          environment);
+      putter.put(
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.LOCATION_KEY,
+          location);
+      putter.put(
+          ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.PRODUCTION_READY_KEY,
+          productionReady);
+      if (null != message) {
+        putter.put(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.MESSAGES_KEY, message);
+      }
+      // Enable this entry.
+      putter.put(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+      // Check that the uploaded field is false and commit.
+      putter.checkAndCommit(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, false);
+    } finally {
+      putter.close();
+    }
+  }
+
+  /**
+   * Delete an entire row.
+   *
+   * @param artifact name of the model lifecycle to delete.
+   * @throws IOException if the deletion attempt was unsuccessful.
+   */
+  private void deleteRow(final ArtifactName artifact) throws IOException {
+    final EntityId eid = mKijiTable.getEntityId(artifact.getName(),
+        artifact.getVersion().toCanonicalString());
+    final KijiDeleter deleter = mKijiTable.getWriterFactory().openTableWriter();
+    deleter.deleteRow(eid);
+    deleter.close();
+  }
+
+  /**
+   * Deploys a new model lifecycle by packaging and uploading the artifact file and dependencies.
+   *
+   * @param artifact name of the model being deployed.
+   * @param artifactFile is the actual artifact to upload.
    * @param dependencies are the third-party dependencies to include in the artifact
    * @param definition AvroModelDefinition of model lifecycle
    * @param environment AvroModelEnvironment of model lifecycle
@@ -397,9 +485,7 @@ public final class KijiModelRepository implements Closeable {
    */
   // CSOFF: ParameterNumberCheck
   public void deployModelLifecycle(
-      final String groupName,
-      final String artifactName,
-      final ProtocolVersion version,
+      final ArtifactName artifact,
       final File artifactFile,
       final List<File> dependencies,
       final AvroModelDefinition definition,
@@ -408,112 +494,130 @@ public final class KijiModelRepository implements Closeable {
       final String message) throws IOException {
     // CSON: ParameterNumberCheck
 
-    final String modelName = getModelName(groupName, artifactName);
+    // ArtifactFile and dependencies must be specified
+    Preconditions.checkNotNull(artifactFile);
+    Preconditions.checkNotNull(dependencies);
 
     // If the version is not specified, then fetch the latest version given the
-    // group/artifact names. Increment by 0.0.1 ELSE check if row exists and if so, throw exception
-    final ProtocolVersion latestVersion =
-        (null == version) ? fetchNextVersion(groupName, artifactName) : version;
+    // artifact name. Increment by 0.0.1 ELSE check if row exists and if so, throw exception
+    final ArtifactName versionedArtifact;
+    if (!artifact.isVersionSpecified()) {
+      versionedArtifact = new ArtifactName(artifact.getName(), fetchNextVersion(artifact));
+    } else {
+      versionedArtifact = artifact;
+    }
 
-    // Start assembling artifact file.
-    // Exception on these steps terminates deployment.
+    // Start assembling artifact file
     final File outputFile = File.createTempFile("final_artifact", ".war");
     outputFile.deleteOnExit();
     dependencies.add(artifactFile);
     mArtifactPackager.generateArtifact(outputFile, dependencies);
 
-    final EntityId eid = mKijiTable.getEntityId(modelName, latestVersion.toCanonicalString());
-    final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
+    // Reserve a new row.
+    reserveNewRow(versionedArtifact);
+
+    // Upload artifact.
+    final String location;
     try {
-      // Allocate and lock row by setting "model:uploaded" as false.
-      putter.begin(eid);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.UPLOADED_KEY, false);
-      // Check that row doesn't exist (check uploaded cell) and commit.
-      if (!putter.checkAndCommit(ModelArtifact.MODEL_REPO_FAMILY,
-          ModelArtifact.UPLOADED_KEY,
-          null)) {
-        throw new IllegalArgumentException(
-            String.format("Error Version %s exists.", latestVersion.toCanonicalString()));
-      }
-
-      // Model repository row has been reserved, upload artifact.
-      // Upon exception, erase model repository entry and rethrow upload exception.
-      final String location;
-      try {
-        location = mUploader.uploadArtifact(groupName,
-            artifactName,
-            latestVersion,
-            mCurrentBaseStorageURI,
-            outputFile);
-      } catch (final IOException uploadIoe) {
-        // Upon exception, erase previously written model repository entry.
-        final KijiDeleter deleter = mKijiTable.getWriterFactory().openTableWriter();
-        deleter.deleteRow(eid);
-        deleter.close();
-        // Rethrow upload exception.
-        throw uploadIoe;
-      } finally {
-        outputFile.delete();
-      }
-
-      // Put entry to the model repository table.
-      putter.begin(eid);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.DEFINITION_KEY, definition);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.ENVIRONMENT_KEY, environment);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, location);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.PRODUCTION_READY_KEY,
-          productionReady);
-      if (null != message) {
-        putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY, message);
-      }
-      // Enable this entry.
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.UPLOADED_KEY, true);
-      // Check that the uploaded field is false and commit.
-      if (!putter.checkAndCommit(ModelArtifact.MODEL_REPO_FAMILY,
-          ModelArtifact.UPLOADED_KEY,
-          false)) {
-        throw new IllegalArgumentException(
-            String.format("Error Version %s exists.", latestVersion.toCanonicalString()));
-      }
+      location = mUploader.uploadArtifact(versionedArtifact, mCurrentBaseStorageURI, outputFile);
+    } catch (final IOException uploadIoe) {
+      // Upon exception, erase previously written model repository entry.
+      deleteRow(versionedArtifact);
+      // Rethrow upload exception.
+      throw uploadIoe;
     } finally {
-      putter.close();
+      outputFile.delete();
     }
+
+    // Put entry to the model repository table.
+    writeRow(versionedArtifact, definition, environment, location, productionReady, message);
+  }
+
+  /**
+   * Deploys a new model lifecycle from existing artifact package.
+   *
+   * @param artifact name of the model being deployed.
+   * @param sourceArtifact name of the the existing model lifecycle
+   *        whose package contains the code to associate with this deployment
+   *        This is specified if artifactFile and dependencies are null.
+   * @param definition AvroModelDefinition of model lifecycle.
+   * @param environment AvroModelEnvironment of model lifecycle.
+   * @param productionReady is true iff model lifecycle is ready for scoring.
+   * @param message (optional) latest update message of the model lifecycle.
+   * @throws IOException if model lifecycle cannot be deployed.
+   */
+  // CSOFF: ParameterNumberCheck
+  public void deployModelLifecycle(
+      final ArtifactName artifact,
+      final ArtifactName sourceArtifact,
+      final AvroModelDefinition definition,
+      final AvroModelEnvironment environment,
+      final boolean productionReady,
+      final String message) throws IOException {
+    // CSON: ParameterNumberCheck
+
+    // Source version must be specified.
+    Preconditions.checkArgument(sourceArtifact.isVersionSpecified(),
+        "Source artifact must specify version.");
+
+    // If the version is not specified, then fetch the latest version given the
+    // artifact name. Increment by 0.0.1 ELSE check if row exists and if so, throw exception
+    final ArtifactName versionedArtifact;
+    if (!artifact.isVersionSpecified()) {
+      versionedArtifact = new ArtifactName(artifact.getName(), fetchNextVersion(artifact));
+    } else {
+      versionedArtifact = artifact;
+    }
+
+    // Reserve a new row.
+    reserveNewRow(versionedArtifact);
+
+    // Acquire appropriate existing artifact's location
+    final ModelLifeCycle existingArtifact = getModelLifeCycle(sourceArtifact);
+    Preconditions.checkNotNull(existingArtifact.getLocation(), String.format(
+        "Could not ascertain model location field of specified existing artifact: %s",
+        sourceArtifact));
+    final String location = existingArtifact.getLocation();
+
+    // Put entry to the model repository table.
+    writeRow(versionedArtifact, definition, environment, location, productionReady, message);
   }
 
   /**
    * Update the production readiness flag of a model in the model repository table.
    * And sets a message.
    *
-   * @param groupName that identifies this model lifecycle
-   * @param artifactName that identifies this model lifecycle
+   * @param artifact name that identifies this model lifecycle.
    * @param version of this particular instance of a model lifecycle.
    * @param productionReady is true iff model lifecycle is ready for scoring
    * @param message (optional) latest update message of the model lifecycle
    * @throws IOException if model can not be updated
    */
   public void setProductionReady(
-      final String groupName,
-      final String artifactName,
+      final ArtifactName artifact,
       final ProtocolVersion version,
       final boolean productionReady,
       final String message) throws IOException {
-    final String modelName = getModelName(groupName, artifactName);
     // Put entry to the model repository table.
-    final EntityId eid = mKijiTable.getEntityId(modelName, version.toCanonicalString());
+    final EntityId eid = mKijiTable.getEntityId(
+        artifact.getName(),
+        artifact.getVersion().toCanonicalString());
     final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
     try {
       putter.begin(eid);
-      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.PRODUCTION_READY_KEY,
+      putter.put(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.PRODUCTION_READY_KEY,
           productionReady);
       if (null != message) {
-        putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY, message);
+        putter.put(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.MESSAGES_KEY, message);
       }
       // Check that row exists and "model:uploaded" flag is true.
-      if (!putter.checkAndCommit(ModelArtifact.MODEL_REPO_FAMILY,
-          ModelArtifact.UPLOADED_KEY,
+      if (!putter.checkAndCommit(ModelLifeCycle.MODEL_REPO_FAMILY,
+          ModelLifeCycle.UPLOADED_KEY,
           true)) {
         throw new IllegalArgumentException(
-            String.format("Model %s-%s does not exist.", modelName, version.toCanonicalString()));
+            String.format("Model %s-%s does not exist.",
+                artifact.getName(),
+                artifact.getVersion().toCanonicalString()));
       }
     } finally {
       putter.close();
@@ -525,17 +629,16 @@ public final class KijiModelRepository implements Closeable {
    * of the deployed lifecycle and adding 1 to the revision. For example, if the
    * last known version was 1.0.0 then the next version will be 1.0.1.
    *
-   * @param groupName is what identifies this model lifecycle.
-   * @param artifactName is what identifies the model lifecycle's artifact.
-   * @return the next version of the lifecycle given the group/artifact name.
+   * @param artifact name of the model lifecycle.
    * @throws IOException if there is a problem fetching version info.
+   * @return the next version of the lifecycle given by the artifact name.
    */
-  private ProtocolVersion fetchNextVersion(final String groupName, final String artifactName)
+  private ProtocolVersion fetchNextVersion(final ArtifactName artifact)
       throws IOException {
 
     final FormattedEntityIdRowFilter filter = new FormattedEntityIdRowFilter(
         (RowKeyFormat2) mKijiTable.getLayout().getDesc().getKeysFormat(),
-        getModelName(groupName, artifactName));
+        artifact.getName());
     final KijiDataRequest dataRequest = KijiDataRequest.create("model");
     final KijiScannerOptions options = new KijiScannerOptions();
     options.setKijiRowFilter(filter);
@@ -564,52 +667,44 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Returns a row representing the model lifecycle data.
+   * Returns a model lifecycle from the model repository.
    *
-   * @param groupName is the lifecycle's group name.
-   * @param artifactName is the lifecycle's artifact name.
-   * @param version is the version of the lifecycle to retrieve
-   * @return a single row representing a model lifecycle. This row object may be empty if the
-   *         requested lifecycle doesn't exist in the repository.
+   * @param artifact name of the model lifecycle
+   * @return a single artifact.
    * @throws IOException if there is an exception fetching data.
    */
-  public KijiRowData getModelLifeCycle(String groupName, String artifactName,
-      ProtocolVersion version) throws IOException {
-
-    KijiDataRequest dataRequest = KijiDataRequest.create("model");
-    KijiTableReader reader = mKijiTable.openTableReader();
-    try {
-      EntityId eid = mKijiTable.getEntityId(getModelName(groupName, artifactName),
-          version.toCanonicalString());
-      KijiRowData returnRow = reader.get(eid, dataRequest);
-      boolean uploaded = returnRow.<Boolean>getMostRecentValue(
-          ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.UPLOADED_KEY);
-      if (!uploaded) {
-        throw new IOException("Requested model was not uploaded, therefore not deployed.");
-      }
-      return returnRow;
-    } finally {
-      reader.close();
-    }
+  public ModelLifeCycle getModelLifeCycle(final ArtifactName artifact) throws IOException {
+    return getModelLifeCycle(artifact, null);
   }
 
   /**
-   * Returns the canonical name of a model life cycle given the group and artifact name. This
-   * is here as the layout supports a single name field but other parts of the system support
-   * the separate group/artifact names.
+   * Returns request fields from the model lifecycle from the model repository.
    *
-   * @param groupName the group name of the lifecycle.
-   * @param artifactName the artifact name of the lifecycle.
-   * @return the canonical name of the model lifecycle suitable for storage in the Kiji table
-   *         storing deployed lifecycles.
+   * @param artifact name of the model lifecycle
+   * @param fields requested by the user; null returns all fields
+   * @return a single artifact.
+   * @throws IOException if there is an exception fetching data.
    */
-  private static String getModelName(String groupName, String artifactName) {
-    Preconditions.checkNotNull(groupName);
-    Preconditions.checkNotNull(artifactName);
-    Preconditions.checkArgument(groupName.length() > 0, "Group name must be nonempty string.");
-    Preconditions.checkArgument(artifactName.length() > 0,
-        "Artifact name must be nonempty string.");
-    return (groupName + "." + artifactName).intern();
+  public ModelLifeCycle getModelLifeCycle(
+      final ArtifactName artifact,
+      Set<String> fields) throws IOException {
+    if (null == fields) {
+      fields = Sets.newHashSet(ModelLifeCycle.DEFINITION_KEY,
+          ModelLifeCycle.ENVIRONMENT_KEY,
+          ModelLifeCycle.LOCATION_KEY,
+          ModelLifeCycle.PRODUCTION_READY_KEY,
+          ModelLifeCycle.MESSAGES_KEY);
+    }
+    final KijiDataRequest dataRequest = KijiDataRequest.create("model");
+    final KijiTableReader reader = mKijiTable.openTableReader();
+    try {
+      final EntityId eid = mKijiTable.getEntityId(artifact.getName(),
+          artifact.getVersion().toCanonicalString());
+      final KijiRowData returnRow = reader.get(eid, dataRequest);
+      return new ModelLifeCycle(returnRow, fields);
+    } finally {
+      reader.close();
+    }
   }
 
   /**
@@ -638,15 +733,18 @@ public final class KijiModelRepository implements Closeable {
     dataRequestBuilder.addColumns(dataRequestBuilder
         .newColumnsDef()
         .withMaxVersions(Integer.MAX_VALUE)
-        .add("model", "location"));
+        .add(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY)
+        .add(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY));
     // Filter out all incomplete models.
     final KijiScannerOptions options = new KijiScannerOptions();
     options.setKijiRowFilter(KijiModelRepository.UPLOADED_MODEL_FILTER);
     final KijiRowScanner scanner = reader.getScanner(dataRequestBuilder.build(), options);
     try {
       for (KijiRowData row : scanner) {
-        issues.addAll((new ModelArtifact(row, Sets.newHashSet(ModelArtifact.LOCATION_KEY)))
-            .checkModelLocation(baseURI, download));
+        // Proper construction of ModelArtifact requires UPLOADED_KEY.
+        final ModelLifeCycle model = new ModelLifeCycle(row,
+            Sets.newHashSet(ModelLifeCycle.LOCATION_KEY));
+        issues.addAll(model.checkModelLocation(baseURI, download));
       }
     } finally {
       scanner.close();
@@ -656,41 +754,40 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-   * Acquires a set of model lifecycle row data containing requested fields from
+   * Acquires a set of model lifecycles containing requested fields from
    * the model repository table.
    *
    * @param fields requested by the user; null returns all fields
    * @param maxVersions maximum versions of a cell to return
    * @param productionReadyOnly when true returns models whose latest production_ready flag is true.
-   * @return a set of model row data from the model repository table.
+   * @return a set of model lifecycles from the model repository table.
    * @throws IOException when table can not be properly scanned.
    */
-  public Set<ModelArtifact> getModelLifecycles(Set<String> fields,
+  public Set<ModelLifeCycle> getModelLifeCycles(
+      Set<String> fields,
       final int maxVersions,
       final boolean productionReadyOnly) throws IOException {
     Preconditions.checkArgument(maxVersions >= 0);
 
-    final Set<ModelArtifact> setOfModels = Sets.newHashSet();
+    final Set<ModelLifeCycle> setOfModels = Sets.newHashSet();
     final KijiTableReader reader = mKijiTable.openTableReader();
     final KijiDataRequestBuilder dataRequestBuilder = KijiDataRequest.builder();
-    // We want to get every existing model in the table. Every model has a definition so request
-    // the model:definition column.
+    // We want to get every existing model in the table.
+    // Every model has an uploaded flag so request the model:uploaded column.
     final ColumnsDef columns = dataRequestBuilder
         .newColumnsDef()
         .withMaxVersions(maxVersions)
-        .add(new KijiColumnName(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.DEFINITION_KEY));
+        .add(new KijiColumnName(ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY));
     // Add all other fields requested by the user.
     if (null == fields) {
-      fields = Sets.newHashSet(ModelArtifact.DEFINITION_KEY,
-          ModelArtifact.ENVIRONMENT_KEY,
-          ModelArtifact.LOCATION_KEY,
-          ModelArtifact.PRODUCTION_READY_KEY,
-          ModelArtifact.MESSAGES_KEY);
+      fields = Sets.newHashSet(ModelLifeCycle.DEFINITION_KEY,
+          ModelLifeCycle.ENVIRONMENT_KEY,
+          ModelLifeCycle.LOCATION_KEY,
+          ModelLifeCycle.PRODUCTION_READY_KEY,
+          ModelLifeCycle.MESSAGES_KEY);
     }
     for (final String field : fields) {
-      if (!field.equals(ModelArtifact.DEFINITION_KEY)) {
-        columns.add(new KijiColumnName(ModelArtifact.MODEL_REPO_FAMILY, field));
-      }
+      columns.add(new KijiColumnName(ModelLifeCycle.MODEL_REPO_FAMILY, field));
     }
     dataRequestBuilder.addColumns(columns);
 
@@ -708,7 +805,7 @@ public final class KijiModelRepository implements Closeable {
     final KijiRowScanner scanner = reader.getScanner(dataRequestBuilder.build(), options);
     try {
       for (final KijiRowData row : scanner) {
-        setOfModels.add(new ModelArtifact(row, fields));
+        setOfModels.add(new ModelLifeCycle(row, fields));
       }
     } finally {
       scanner.close();

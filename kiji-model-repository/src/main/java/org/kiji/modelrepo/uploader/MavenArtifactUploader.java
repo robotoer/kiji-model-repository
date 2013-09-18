@@ -34,6 +34,7 @@ import org.apache.maven.shared.invoker.InvocationResult;
 import org.apache.maven.shared.invoker.Invoker;
 import org.apache.maven.shared.invoker.MavenInvocationException;
 
+import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.MavenUtils;
 import org.kiji.schema.util.ProtocolVersion;
 
@@ -64,11 +65,15 @@ public class MavenArtifactUploader implements ArtifactUploader {
   private static final String REPOSITORY_ID = "kiji-model-repository";
 
   @Override
-  public String uploadArtifact(String groupName, String artifactName, ProtocolVersion version,
-      URI baseURI, File artifactPath) throws IOException {
+  public String uploadArtifact(
+      ArtifactName artifact,
+      URI baseURI,
+      File artifactPath) throws IOException {
 
     Preconditions.checkArgument(artifactPath.exists(), "Error %s does not exist!",
         artifactPath.getAbsolutePath());
+    Preconditions.checkArgument(artifact.isVersionSpecified(), "Version must be specified.");
+    MavenArtifactName mavenArtifact = new MavenArtifactName(artifact.toString());
 
     // This will upload the artifact located in artifactPath to baseUrl via
     // mvn deploy:deploy-file
@@ -77,9 +82,9 @@ public class MavenArtifactUploader implements ArtifactUploader {
     request.setGoals(Lists.newArrayList("deploy:deploy-file"));
     Properties props = new Properties();
     props.setProperty("url", baseURI.toString());
-    props.setProperty("groupId", groupName);
-    props.setProperty("artifactId", artifactName);
-    props.setProperty("version", version.toCanonicalString());
+    props.setProperty("groupId", mavenArtifact.getGroupName());
+    props.setProperty("artifactId", mavenArtifact.getArtifactName());
+    props.setProperty("version", mavenArtifact.getVersion().toCanonicalString());
     props.setProperty("generatePom", "false");
     props.setProperty("repositoryId", REPOSITORY_ID);
     props.setProperty("file", artifactPath.getAbsolutePath());
@@ -97,15 +102,96 @@ public class MavenArtifactUploader implements ArtifactUploader {
 
     // Construct the return location.
     StringBuilder returnLocation = new StringBuilder();
-    returnLocation.append(groupName.replace('.', '/'));
+    returnLocation.append(mavenArtifact.getGroupName().replace('.', '/'));
     returnLocation.append("/");
-    returnLocation.append(artifactName.replace('.', '/'));
+    returnLocation.append(mavenArtifact.getArtifactName().replace('.', '/'));
     returnLocation.append("/");
-    returnLocation.append(version.toCanonicalString());
+    returnLocation.append(mavenArtifact.getVersion().toCanonicalString());
     returnLocation.append("/");
-    returnLocation.append(artifactName + "-" + version.toCanonicalString()
+    returnLocation.append(
+        mavenArtifact.getArtifactName()
+        + "-"
+        + mavenArtifact.getVersion().toCanonicalString()
         + "." + Files.getFileExtension(artifactPath.getAbsolutePath()));
 
     return returnLocation.toString();
+  }
+
+  /**
+   * Class to encapsulate Maven artifacts' names. These names are three-part:
+   * group name, artifact name, version.
+   * Their canonical string representation is:
+   * &lt;group name&gt;.&lt;artifact name&gt;[-&lt;version&gt;].
+   */
+  private static class MavenArtifactName {
+    private final String mArtifactName;
+    private final String mGroupName;
+    private ProtocolVersion mVersion;
+
+    /**
+     * Maven artifacts' names are of the form:
+     * &lt;group name&gt;.&lt;artifact name&gt;[-&lt;version&gt;].
+     *
+     * <li>
+     *   <ul> The artifact name may not contain periods or hyphens. </ul>
+     *   <ul> The group name may not contain hyphens. </ul>
+     *   <ul> The version must be of the form &lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;. </ul>
+     * </li>
+     *
+     * @param name of the Maven artifact to parse.
+     */
+    public MavenArtifactName(final String name) {
+      // E.g. org.mycompany.package.artifact-1.0.0 where
+      // groupName=org.mycompany.package
+      // artifactName=artifact
+      // version=1.0.0
+      final int hyphenPosition = name.indexOf("-");
+      final String groupAndArtifactName;
+      if (0 < hyphenPosition) {
+        // TODO: Determine if this is the right version to put in.
+        // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
+        mVersion = ProtocolVersion.parse(name.substring(hyphenPosition + 1));
+        groupAndArtifactName = name.substring(0, hyphenPosition);
+      } else {
+        mVersion = null;
+        groupAndArtifactName = name;
+      }
+      final int lastPeriodPosition = groupAndArtifactName.lastIndexOf(".");
+      Preconditions.checkArgument(lastPeriodPosition >= 0,
+          "Artifact must specify valid group name and artifact name of the form"
+          + "<group name>.<artifact name>[-<version>]");
+      mGroupName = groupAndArtifactName.substring(0, lastPeriodPosition);
+      mArtifactName = groupAndArtifactName.substring(lastPeriodPosition + 1);
+      Preconditions.checkArgument(mGroupName.length() > 0, "Group name must be nonempty string.");
+      Preconditions.checkArgument(mArtifactName.length() > 0,
+          "Artifact name must be nonempty string.");
+    }
+
+    /**
+     * Gets the artifact name within it's group.
+     *
+     * @return artifact name.
+     */
+    public String getArtifactName() {
+      return mArtifactName;
+    }
+
+    /**
+     * Gets the artifact's group name.
+     *
+     * @return group name.
+     */
+    public String getGroupName() {
+      return mGroupName;
+    }
+
+    /**
+     * Gets the artifact's version.
+     *
+     * @return version
+     */
+    public ProtocolVersion getVersion() {
+      return mVersion;
+    }
   }
 }

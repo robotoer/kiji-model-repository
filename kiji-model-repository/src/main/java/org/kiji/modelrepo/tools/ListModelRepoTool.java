@@ -29,7 +29,7 @@ import com.google.common.collect.Sets;
 
 import org.kiji.common.flags.Flag;
 import org.kiji.modelrepo.KijiModelRepository;
-import org.kiji.modelrepo.ModelArtifact;
+import org.kiji.modelrepo.ModelLifeCycle;
 import org.kiji.schema.KConstants;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiURI;
@@ -50,11 +50,6 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
   private String mArtifactPattern = "([0-z]|\\.)+";
 
   private Matcher mArtifactPatternMatcher = null;
-
-  @Flag(name="group", usage="Regex pattern for group name.")
-  private String mGroupPattern = "([0-z]|\\.)+";
-
-  private Matcher mGroupPatternMatcher = null;
 
   @Flag(name="version", usage="Regex pattern for version.")
   private String mVersionPattern = "([0-z]|\\.)+";
@@ -104,9 +99,8 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
       }
     }
 
-    // Set up group, artifact, and version pattern matchers
+    // Set up artifact and version pattern matchers
     mArtifactPatternMatcher = Pattern.compile(mArtifactPattern).matcher("");
-    mGroupPatternMatcher = Pattern.compile(mGroupPattern).matcher("");
     mVersionPatternMatcher = Pattern.compile(mVersionPattern).matcher("");
   }
 
@@ -138,19 +132,19 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
   private Set<String> getFieldsToPrint() {
     final Set<String> fieldsToPrint = Sets.newHashSet();
     if (mLocation) {
-      fieldsToPrint.add(ModelArtifact.LOCATION_KEY);
+      fieldsToPrint.add(ModelLifeCycle.LOCATION_KEY);
     }
     if (mDefinition) {
-      fieldsToPrint.add(ModelArtifact.DEFINITION_KEY);
+      fieldsToPrint.add(ModelLifeCycle.DEFINITION_KEY);
     }
     if (mEnvironment) {
-      fieldsToPrint.add(ModelArtifact.ENVIRONMENT_KEY);
+      fieldsToPrint.add(ModelLifeCycle.ENVIRONMENT_KEY);
     }
     if (mProductionReady) {
-      fieldsToPrint.add(ModelArtifact.PRODUCTION_READY_KEY);
+      fieldsToPrint.add(ModelLifeCycle.PRODUCTION_READY_KEY);
     }
     if (mMessage) {
-      fieldsToPrint.add(ModelArtifact.MESSAGES_KEY);
+      fieldsToPrint.add(ModelLifeCycle.MESSAGES_KEY);
     }
     return fieldsToPrint;
   }
@@ -162,7 +156,6 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
         "This tool does not accept unnamed arguments: ", nonFlagArgs.toString());
     Preconditions.checkNotNull(mInstanceURI);
     Preconditions.checkNotNull(mArtifactPatternMatcher);
-    Preconditions.checkNotNull(mGroupPatternMatcher);
     Preconditions.checkArgument(mMaxVersionsInteger > 0, "Max versions must be positive.");
 
     // Open model repository table.
@@ -173,21 +166,18 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
     final Set<String> fieldsToPrint = this.getFieldsToPrint();
 
     // Query the model repository for a list of entries.
-    final Set<ModelArtifact> setOfModels = modelRepository.getModelLifecycles(
+    final Set<ModelLifeCycle> setOfModels = modelRepository.getModelLifeCycles(
         fieldsToPrint,
         mMaxVersionsInteger,
         mProductionReadyOnly);
 
     // Iterate through list of model row data and appropriately pretty print fields.
-    for (final ModelArtifact model : setOfModels) {
-      mVersionPatternMatcher.reset(model.getModelVersion().toCanonicalString());
-      mGroupPatternMatcher.reset(model.getGroupName());
-      mArtifactPatternMatcher.reset(model.getArtifactName());
+    for (final ModelLifeCycle model : setOfModels) {
+      mVersionPatternMatcher.reset(model.getArtifactName().getVersion().toCanonicalString());
+      mArtifactPatternMatcher.reset(model.getArtifactName().getName());
 
-      // If artifact, group, and version regex match, then print the corresponding row.
-      if (mGroupPatternMatcher.matches()
-          && mArtifactPatternMatcher.matches()
-          && mVersionPatternMatcher.matches()) {
+      // If artifact and version regex match, then print the corresponding row.
+      if (mArtifactPatternMatcher.matches() && mVersionPatternMatcher.matches()) {
         getPrintStream().println(model.toString());
       }
     }

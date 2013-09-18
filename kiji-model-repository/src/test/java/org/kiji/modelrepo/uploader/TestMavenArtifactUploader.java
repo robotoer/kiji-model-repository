@@ -26,6 +26,7 @@ import com.google.common.io.Files;
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.TestUtils;
 import org.kiji.schema.util.ProtocolVersion;
 
@@ -43,8 +44,10 @@ public class TestMavenArtifactUploader {
     ArtifactUploader uploader = new MavenArtifactUploader();
     String expectedRelativeLocation =
         "org/kiji/models/checkout_model/1.0.0/checkout_model-1.0.0.war";
-    String actualLocation = uploader.uploadArtifact("org.kiji.models", "checkout_model",
-        ProtocolVersion.parse("1.0.0"), tempDeployLocation.toURI(), tempArtifact);
+    String actualLocation = uploader.uploadArtifact(
+        new ArtifactName("org.kiji.models.checkout_model", ProtocolVersion.parse("1.0.0")),
+        tempDeployLocation.toURI(),
+        tempArtifact);
 
     Assert.assertEquals(expectedRelativeLocation, actualLocation);
 
@@ -63,11 +66,13 @@ public class TestMavenArtifactUploader {
     File tempArtifact = TestUtils.createFakeJar("my_final_artifact", ".war", null);
 
     ArtifactUploader uploader = new MavenArtifactUploader();
-    uploader.uploadArtifact("myModels", "checkout_model", ProtocolVersion.parse("1.0.0"),
-        tempDeployLocation.toURI(), tempArtifact);
+    uploader.uploadArtifact(
+        new ArtifactName("my_models.checkout_model", ProtocolVersion.parse("1.0.0")),
+        tempDeployLocation.toURI(),
+        tempArtifact);
 
     File expectedArtifactLocation = new File(tempDeployLocation,
-        "myModels/checkout_model/1.0.0/checkout_model-1.0.0.war");
+        "my_models/checkout_model/1.0.0/checkout_model-1.0.0.war");
     Assert.assertTrue(expectedArtifactLocation.exists());
   }
 
@@ -81,11 +86,13 @@ public class TestMavenArtifactUploader {
     File tempArtifact = TestUtils.createFakeJar("my_final_artifact", ".war", null);
 
     ArtifactUploader uploader = new MavenArtifactUploader();
-    uploader.uploadArtifact("myModels", "checkout_model", ProtocolVersion.parse("1"),
-        tempDeployLocation.toURI(), tempArtifact);
+    uploader.uploadArtifact(
+        new ArtifactName("my_models.checkout_model", ProtocolVersion.parse("1")),
+        tempDeployLocation.toURI(),
+        tempArtifact);
 
     File expectedArtifactLocation = new File(tempDeployLocation,
-        "myModels/checkout_model/1.0.0/checkout_model-1.0.0.war");
+        "my_models/checkout_model/1.0.0/checkout_model-1.0.0.war");
     Assert.assertTrue(expectedArtifactLocation.exists());
   }
 }

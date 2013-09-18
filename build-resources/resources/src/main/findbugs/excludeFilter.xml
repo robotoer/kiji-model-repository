@@ -31,4 +31,15 @@
     </Or>
   </Match>
 
+  <Match>
+    <!-- These fields get populated by the flag parser. -->
+    <Class name="org.kiji.modelrepo.tools.DeployModelRepoTool" />
+    <Bug pattern="UWF_NULL_FIELD" />
+  </Match>
+
+  <Match>
+    <!-- These fields get populated by the flag parser. -->
+    <Class name="org.kiji.modelrepo.tools.UpdateModelRepoTool" />
+    <Bug pattern="UWF_NULL_FIELD" />
+  </Match>
 </FindBugsFilter>

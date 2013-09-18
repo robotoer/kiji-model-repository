@@ -32,6 +32,7 @@ import org.apache.commons.io.IOUtils;
 import org.kiji.common.flags.Flag;
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
 import org.kiji.modelrepo.depresolver.DependencyResolver;
 import org.kiji.modelrepo.depresolver.DependencyResolverFactory;
@@ -40,47 +41,47 @@ import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiURI;
 import org.kiji.schema.tools.BaseTool;
 import org.kiji.schema.util.FromJson;
-import org.kiji.schema.util.ProtocolVersion;
 
 /**
  * The deploy tool uploads the model lifecycle and coordinates to the model repository.
  */
 public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
-  /** Artifact's group name. */
-  private String mArtifactGroupName = null;
+  /** Name of artifact to upload. */
+  private ArtifactName mArtifact = null;
 
-  /** Artifact's name. **/
-  private String mArtifactName = null;
+  /** Name of source artifact. */
+  private ArtifactName mSourceArtifact = null;
 
   /** Artifact's fully qualified path. **/
   private File mArtifactPath = null;
 
-  @Flag(name = "kiji", usage = "Kiji instance housing the model repository.")
+  @Flag(name="kiji", usage="Kiji instance housing the model repository.")
   private String mInstanceURIFlag = KConstants.DEFAULT_INSTANCE_URI;
 
   private KijiURI mInstanceURI = null;
 
-  @Flag(name = "definition", usage = "Path to model definition.")
+  @Flag(name="definition", usage="Path to model definition.")
   private String mDefinitionFlag = null;
 
-  @Flag(name = "environment", usage = "Path to model environment.")
+  @Flag(name="environment", usage="Path to model environment.")
   private String mEnvironmentFlag = null;
 
-  @Flag(name = "version", usage = "Model lifecycle version.")
-  private String mVersionFlag = null;
-
-  @Flag(name = "production-ready", usage = "Is the model lifecycle production ready.")
+  @Flag(name="production-ready", usage="Is the model lifecycle production ready.")
   private boolean mProductionReady = false;
 
-  @Flag(name = "message", usage = "Update message for this deployment.")
+  @Flag(name="message", usage="Update message for this deployment.")
   private String mMessage = null;
 
-  @Flag(name = "deps", usage = "Optional third-party dependencies to include "
+  @Flag(name="existing-artifact",
+      usage="If specifying package location with existing artifact name.")
+  private boolean mExistingArtifact = false;
+
+  @Flag(name="deps", usage="Optional third-party dependencies to include "
       + "in the final deployed artifact.")
   private String mDeps = null;
 
-  @Flag(name = "deps-resolver", usage = "(raw|maven). raw means whatever the --deps flag "
+  @Flag(name="deps-resolver", usage="(raw|maven). raw means whatever the --deps flag "
       + "specifies will be included in the artifact. maven means use --deps as the pom.xml "
       + "and resolve dependencies accordingly.")
   private String mDepsResolver = "raw";
@@ -130,45 +131,55 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   @Override
   protected int run(List<String> args) throws Exception {
     // Validate that there's a maven artifact specified.
-    Preconditions.checkArgument(args.size() == 3, "Usage: deploy <artifact group name> "
-        + "<artifact name> <path to artifact to upload>. "
-        + "(e.g. com.mycompany.myorg my-model my-model.jar)");
+    Preconditions.checkArgument(args.size() == 2, "Usage: deploy <package>."
+        + "<identifier>[-<version>] <path to artifact to upload>"
+        + "%n(e.g. com.mycompany.myorg.my_model-1.0.0 my-model.jar)"
+        + "%nor%n"
+        + "deploy <package>."
+        + "<identifier>[-<version>] <source artifact package>."
+        + "<source artifact identifier>[-<source artifact version>]"
+        + "%n(e.g. com.mycompany.myorg.my_model-1.0.0 com.mycompany.myorg.existing_model-1.0.0)");
 
-    mArtifactGroupName = args.get(0);
-    mArtifactName = args.get(1);
-    mArtifactPath = new File(args.get(2));
+    mArtifact = new ArtifactName(args.get(0));
 
-    Preconditions.checkArgument(mArtifactPath.exists(), "Error: %s does not exist", args.get(2));
+    List<File> resolvedDeps = null;
+
+    if (mExistingArtifact) {
+      mSourceArtifact = new ArtifactName(args.get(1));
+    } else {
+      mArtifactPath = new File(args.get(1));
+      Preconditions.checkArgument(mArtifactPath.exists(), "Error: %s does not exist", args.get(1));
+      resolvedDeps = Lists.newArrayList();
+      if (mDeps != null) {
+        resolvedDeps = mResolver.resolveDependencies(mDeps);
+      }
+    }
 
     final Kiji kiji = Kiji.Factory.open(mInstanceURI);
     final KijiModelRepository kijiModelRepository = KijiModelRepository.open(kiji);
 
-    // TODO: Determine if this is the right version to put in.
-    // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
-
-    ProtocolVersion protocolVersion = null;
-    if (mVersionFlag != null) {
-      protocolVersion = ProtocolVersion.parse(mVersionFlag);
-    }
-
-    AvroModelDefinition avroModelDefinition = readAvroModelDefinition(mDefinitionFlag);
-    AvroModelEnvironment avroModelEnvironment = readAvroModelEnvironment(mEnvironmentFlag);
-
-    List<File> resolvedDeps = Lists.newArrayList();
-    if (mDeps != null) {
-      resolvedDeps = mResolver.resolveDependencies(mDeps);
-    }
+    final AvroModelDefinition avroModelDefinition = readAvroModelDefinition(mDefinitionFlag);
+    final AvroModelEnvironment avroModelEnvironment = readAvroModelEnvironment(mEnvironmentFlag);
 
     try {
-      kijiModelRepository.deployModelLifecycle(mArtifactGroupName,
-          mArtifactName,
-          protocolVersion,
-          mArtifactPath,
-          resolvedDeps,
-          avroModelDefinition,
-          avroModelEnvironment,
-          mProductionReady,
-          mMessage);
+      if (mExistingArtifact) {
+        kijiModelRepository.deployModelLifecycle(
+            mArtifact,
+            mSourceArtifact,
+            avroModelDefinition,
+            avroModelEnvironment,
+            mProductionReady,
+            mMessage);
+      } else {
+        kijiModelRepository.deployModelLifecycle(
+            mArtifact,
+            mArtifactPath,
+            resolvedDeps,
+            avroModelDefinition,
+            avroModelEnvironment,
+            mProductionReady,
+            mMessage);
+      }
     } finally {
       kijiModelRepository.close();
       kiji.release();
