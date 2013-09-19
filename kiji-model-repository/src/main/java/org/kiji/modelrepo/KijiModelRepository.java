@@ -481,6 +481,46 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
+   * Update the production readiness flag of a model in the model repository table.
+   * And sets a message.
+   *
+   * @param groupName that identifies this model lifecycle
+   * @param artifactName that identifies this model lifecycle
+   * @param version of this particular instance of a model lifecycle.
+   * @param productionReady is true iff model lifecycle is ready for scoring
+   * @param message (optional) latest update message of the model lifecycle
+   * @throws IOException if model can not be updated
+   */
+  public void setProductionReady(
+      final String groupName,
+      final String artifactName,
+      final ProtocolVersion version,
+      final boolean productionReady,
+      final String message) throws IOException {
+    final String modelName = getModelName(groupName, artifactName);
+    // Put entry to the model repository table.
+    final EntityId eid = mKijiTable.getEntityId(modelName, version.toCanonicalString());
+    final AtomicKijiPutter putter = mKijiTable.getWriterFactory().openAtomicPutter();
+    try {
+      putter.begin(eid);
+      putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.PRODUCTION_READY_KEY,
+          productionReady);
+      if (null != message) {
+        putter.put(ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.MESSAGES_KEY, message);
+      }
+      // Check that row exists and "model:uploaded" flag is true.
+      if (!putter.checkAndCommit(ModelArtifact.MODEL_REPO_FAMILY,
+          ModelArtifact.UPLOADED_KEY,
+          true)) {
+        throw new IllegalArgumentException(
+            String.format("Model %s-%s does not exist.", modelName, version.toCanonicalString()));
+      }
+    } finally {
+      putter.close();
+    }
+  }
+
+  /**
    * Fetches the next version of the given lifecycle by finding the last version
    * of the deployed lifecycle and adding 1 to the revision. For example, if the
    * last known version was 1.0.0 then the next version will be 1.0.1.

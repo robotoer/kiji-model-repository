@@ -5,3 +5,4 @@ org.kiji.modelrepo.tools.UpgradeModelRepoTool
 org.kiji.modelrepo.tools.DeleteModelRepoTool
 org.kiji.modelrepo.tools.CheckModelRepoTool
 org.kiji.modelrepo.tools.ListModelRepoTool
+org.kiji.modelrepo.tools.UpdateModelRepoTool
