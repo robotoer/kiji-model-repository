@@ -129,8 +129,37 @@ public final class ArtifactName {
    * @return canonical artifact name.
    */
   public String toString() {
+    return getFullyQualifiedName();
+  }
+
+  /**
+   * Returns the fully qualified name of the artifact (name-version).
+   *
+   * @return the fully qualified name of the artifact (name-version).
+   */
+  public String getFullyQualifiedName() {
     return String.format("%s-%s",
         mName,
         (null == mVersion) ? "" : mVersion.toCanonicalString());
+  }
+
+  @Override
+  public int hashCode() {
+    return toString().hashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null) {
+      return false;
+    }
+    if (getClass() != obj.getClass()) {
+      return false;
+    }
+    ArtifactName other = (ArtifactName) obj;
+    return other.toString().equals(this.toString());
   }
 }

@@ -34,8 +34,7 @@ import org.kiji.web.KijiScoringServerCell
  */
 object TestUtils {
 
-  val groupName = "org.kiji.test"
-  val artifactName = "sample_lifecycle"
+  val ARTIFACT_NAME = "org.kiji.test.sample_lifecycle"
 
   /**
    * Deploys the specified artifact file to the model repository located associated
@@ -50,15 +49,14 @@ object TestUtils {
   def deploySampleLifecycle(kiji: Kiji, version: String, artifactFile: String) {
     val deployTool = new DeployModelRepoTool
     // Deploy some bogus artifact. We don't care that it's not executable code yet.
+    val qualifiedName = String.format("%s-%s",ARTIFACT_NAME,version)
     val args = List(
-      groupName,
-      artifactName,
+      qualifiedName,
       artifactFile,
       "--kiji=" + kiji.getURI().toString(),
       "--definition=src/test/resources/org/kiji/samplelifecycle/model_definition.json",
       "--environment=src/test/resources/org/kiji/samplelifecycle/model_environment.json",
       "--production-ready=true",
-      "--version=" + version,
       "--message=Uploading Artifact")
 
     deployTool.toolMain(args.asJava)

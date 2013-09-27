@@ -34,7 +34,6 @@ import java.util.Set;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 
 import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
@@ -73,38 +72,24 @@ public class ModelLifeCycle {
   private final URI mBaseStorageURI;
 
   /**
-   * Construct model lifecycle object from row data from the model repository table.
-   *
-   * @param model row data from the model repository table.
-   * @throws IOException if the row data can not be properly accessed to retrieve values.
-   */
-  public ModelLifeCycle(final KijiRowData model) throws IOException {
-    this(model, Sets.newHashSet(
-        DEFINITION_KEY,
-        ENVIRONMENT_KEY,
-        LOCATION_KEY,
-        MESSAGES_KEY,
-        PRODUCTION_READY_KEY));
-  }
-
-  /**
    * Construct model lifecycle object from row data and required fields
    * from the model repository table. Proper construction of ModelArtifact
    * requires UPLOADED_KEY field set to true.
    *
    * @param model row data from the model repository table.
    * @param fieldsToRead read only these fields from the row data.
-   * @param baseStorageURI is the base URI of the underlying storage layer.
+   * @param baseURI is the base URI of the underlying storage layer.
    * @throws IOException if the row data can not be properly accessed to retrieve values.
    */
   public ModelLifeCycle(final KijiRowData model,
-      final Set<String> fieldsToRead) throws IOException {
+      final Set<String> fieldsToRead, URI baseURI) throws IOException {
 
     // Load name and version.
     mArtifact = new ArtifactName(
         model.getEntityId().getComponentByIndex(0).toString(),
         ProtocolVersion.parse(model.getEntityId().getComponentByIndex(1).toString()));
 
+    mBaseStorageURI = baseURI;
     // Load name, definition, environment, and location.
 
     // Every row must have the uploaded field specified and it must be true.
@@ -223,17 +208,6 @@ public class ModelLifeCycle {
    */
   public Map<Long, Boolean> getProductionReady() {
     return mProductionReady;
-  }
-
-  /**
-   * Returns the canonical name of a model life cycle which is the concatenation of the
-   * group + artifact + version. Specifically it's "group.artifact-version"
-   *
-   * @return the canonical name of a model life cycle which is the concatenation of the
-   *         group + artifact + version. Specifically it's "group.artifact-version"
-   */
-  public String getFullyQualifiedModelName() {
-    return getModelName(mGroupName, mArtifactName) + "-" + mArtifactVersion;
   }
 
   @Override
@@ -355,7 +329,7 @@ public class ModelLifeCycle {
    */
   public boolean downloadArtifact(final File file) throws IOException {
     final URI resolvedURI = URI.create(mBaseStorageURI.toString() + "/"
-       + mLocation);
+        + mLocation);
     final URL location = resolvedURI.toURL();
 
     LOG.info("Preparing to download model artifact to temporary location {}",
@@ -373,14 +347,14 @@ public class ModelLifeCycle {
     if (rhs == null) {
       return false;
     } else {
-      return (rhs instanceof ModelArtifact && ((ModelArtifact) rhs).getFullyQualifiedModelName()
-          .equals(this.getFullyQualifiedModelName()));
+      return (rhs instanceof ModelLifeCycle && ((ModelLifeCycle) rhs).mArtifact
+          .equals(this.mArtifact));
     }
   }
 
   @Override
   public int hashCode() {
-    return getFullyQualifiedModelName().hashCode();
+    return mArtifact.hashCode();
   }
 
   /**

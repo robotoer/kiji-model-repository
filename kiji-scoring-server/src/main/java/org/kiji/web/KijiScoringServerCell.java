@@ -79,7 +79,7 @@ public class KijiScoringServerCell {
     mQualifier = qualifier;
   }
 
-  /** Dummy constructor for Jackson **/
+  /** Dummy constructor for Jackson. **/
   public KijiScoringServerCell() {
 
   }

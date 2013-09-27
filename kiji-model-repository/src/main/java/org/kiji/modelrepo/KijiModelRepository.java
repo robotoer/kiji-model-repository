@@ -709,7 +709,7 @@ public final class KijiModelRepository implements Closeable {
       final EntityId eid = mKijiTable.getEntityId(artifact.getName(),
           artifact.getVersion().toCanonicalString());
       final KijiRowData returnRow = reader.get(eid, dataRequest);
-      return new ModelLifeCycle(returnRow, fields);
+      return new ModelLifeCycle(returnRow, fields, mCurrentBaseStorageURI);
     } finally {
       reader.close();
     }
@@ -746,8 +746,8 @@ public final class KijiModelRepository implements Closeable {
       for (KijiRowData row : scanner) {
         // Proper construction of ModelArtifact requires UPLOADED_KEY.
         final ModelLifeCycle model = new ModelLifeCycle(row,
-            Sets.newHashSet(ModelLifeCycle.LOCATION_KEY));
-        issues.addAll(model.checkModelLocation(baseURI, download));
+            Sets.newHashSet(ModelLifeCycle.LOCATION_KEY), mCurrentBaseStorageURI);
+        issues.addAll(model.checkModelLocation(download));
       }
     } finally {
       scanner.close();
@@ -808,7 +808,7 @@ public final class KijiModelRepository implements Closeable {
     final KijiRowScanner scanner = reader.getScanner(dataRequestBuilder.build(), options);
     try {
       for (final KijiRowData row : scanner) {
-        setOfModels.add(new ModelLifeCycle(row, fields));
+        setOfModels.add(new ModelLifeCycle(row, fields, mCurrentBaseStorageURI));
       }
     } finally {
       scanner.close();

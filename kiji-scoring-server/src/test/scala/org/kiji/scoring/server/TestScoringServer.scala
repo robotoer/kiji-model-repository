@@ -131,7 +131,7 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
 
     val modelRepoTable = mFakeKiji.openTable("model_repo")
     val writer = modelRepoTable.openTableWriter()
-    writer.put(modelRepoTable.getEntityId(TestUtils.groupName + "." + TestUtils.artifactName,
+    writer.put(modelRepoTable.getEntityId(TestUtils.ARTIFACT_NAME,
         "0.0.1"), "model", "production_ready", false)
     writer.close()
 

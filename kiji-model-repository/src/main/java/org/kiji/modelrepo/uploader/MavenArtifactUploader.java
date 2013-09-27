@@ -36,7 +36,6 @@ import org.apache.maven.shared.invoker.MavenInvocationException;
 
 import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.MavenUtils;
-import org.kiji.schema.util.ProtocolVersion;
 
 /**
  * Uploads an artifact through the Maven command. This can deploy to a host of storage layers
@@ -73,7 +72,7 @@ public class MavenArtifactUploader implements ArtifactUploader {
     Preconditions.checkArgument(artifactPath.exists(), "Error %s does not exist!",
         artifactPath.getAbsolutePath());
     Preconditions.checkArgument(artifact.isVersionSpecified(), "Version must be specified.");
-    MavenArtifactName mavenArtifact = new MavenArtifactName(artifact.toString());
+    MavenArtifactName mavenArtifact = new MavenArtifactName(artifact);
 
     // This will upload the artifact located in artifactPath to baseUrl via
     // mvn deploy:deploy-file
@@ -115,83 +114,5 @@ public class MavenArtifactUploader implements ArtifactUploader {
         + "." + Files.getFileExtension(artifactPath.getAbsolutePath()));
 
     return returnLocation.toString();
-  }
-
-  /**
-   * Class to encapsulate Maven artifacts' names. These names are three-part:
-   * group name, artifact name, version.
-   * Their canonical string representation is:
-   * &lt;group name&gt;.&lt;artifact name&gt;[-&lt;version&gt;].
-   */
-  private static class MavenArtifactName {
-    private final String mArtifactName;
-    private final String mGroupName;
-    private ProtocolVersion mVersion;
-
-    /**
-     * Maven artifacts' names are of the form:
-     * &lt;group name&gt;.&lt;artifact name&gt;[-&lt;version&gt;].
-     *
-     * <li>
-     *   <ul> The artifact name may not contain periods or hyphens. </ul>
-     *   <ul> The group name may not contain hyphens. </ul>
-     *   <ul> The version must be of the form &lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;. </ul>
-     * </li>
-     *
-     * @param name of the Maven artifact to parse.
-     */
-    public MavenArtifactName(final String name) {
-      // E.g. org.mycompany.package.artifact-1.0.0 where
-      // groupName=org.mycompany.package
-      // artifactName=artifact
-      // version=1.0.0
-      final int hyphenPosition = name.indexOf("-");
-      final String groupAndArtifactName;
-      if (0 < hyphenPosition) {
-        // TODO: Determine if this is the right version to put in.
-        // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
-        mVersion = ProtocolVersion.parse(name.substring(hyphenPosition + 1));
-        groupAndArtifactName = name.substring(0, hyphenPosition);
-      } else {
-        mVersion = null;
-        groupAndArtifactName = name;
-      }
-      final int lastPeriodPosition = groupAndArtifactName.lastIndexOf(".");
-      Preconditions.checkArgument(lastPeriodPosition >= 0,
-          "Artifact must specify valid group name and artifact name of the form"
-          + "<group name>.<artifact name>[-<version>]");
-      mGroupName = groupAndArtifactName.substring(0, lastPeriodPosition);
-      mArtifactName = groupAndArtifactName.substring(lastPeriodPosition + 1);
-      Preconditions.checkArgument(mGroupName.length() > 0, "Group name must be nonempty string.");
-      Preconditions.checkArgument(mArtifactName.length() > 0,
-          "Artifact name must be nonempty string.");
-    }
-
-    /**
-     * Gets the artifact name within it's group.
-     *
-     * @return artifact name.
-     */
-    public String getArtifactName() {
-      return mArtifactName;
-    }
-
-    /**
-     * Gets the artifact's group name.
-     *
-     * @return group name.
-     */
-    public String getGroupName() {
-      return mGroupName;
-    }
-
-    /**
-     * Gets the artifact's version.
-     *
-     * @return version
-     */
-    public ProtocolVersion getVersion() {
-      return mVersion;
-    }
   }
 }

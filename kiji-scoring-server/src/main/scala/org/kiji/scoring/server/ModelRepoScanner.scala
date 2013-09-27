@@ -21,19 +21,18 @@ package org.kiji.scoring.server
 
 import java.io.File
 import java.io.PrintWriter
-
 import scala.collection.JavaConverters.asScalaSetConverter
 import scala.collection.mutable.{ Map => MutableMap }
 import scala.io.Source
-
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.FilenameUtils
 import org.eclipse.jetty.overlays.OverlayedAppProvider
 import org.slf4j.LoggerFactory
 import com.google.common.io.Files
-
 import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.modelrepo.ModelArtifact
+import org.kiji.modelrepo.ModelLifeCycle
+import org.kiji.modelrepo.ArtifactName
+import org.kiji.modelrepo.uploader.MavenArtifactName
 
 /**
  * Performs the actual deployment/undeployment of model lifecycles by scanning the model
@@ -71,7 +70,7 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    *  Stores a set of deployed lifecycles (identified by group.artifact-version) mapping
    *  to the actual folder that houses this lifecycle.
    */
-  private val mLifecycleToInstanceDir = MutableMap[ModelArtifact, File]()
+  private val mLifecycleToInstanceDir = MutableMap[ModelLifeCycle, File]()
 
   /**
    *  Stores a map of model artifact locations to their corresponding template name so that
@@ -114,7 +113,9 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
     // For each lifecycle to undeploy, remove it.
     toUndeploy.map(kv => {
       val (lifeCycle, location) = kv
-      LOG.info("Undeploying lifecycle " + lifeCycle.getFullyQualifiedModelName() +
+      val artifact = lifeCycle.getArtifactName()
+
+      LOG.info("Undeploying lifecycle " + artifact.getFullyQualifiedName() +
         " location = " + location)
       FileUtils.deleteDirectory(location)
     })
@@ -122,7 +123,8 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
     // Now find the set of lifecycles to add by diffing the current with the already
     // deployed and add those.
     allEnabledLifecycles.asScala.diff(toKeep.keySet).map(lifeCycle => {
-      LOG.info("Deploying artifact " + lifeCycle.getFullyQualifiedModelName())
+      val artifact = lifeCycle.getArtifactName()
+      LOG.info("Deploying artifact " + artifact.getFullyQualifiedName())
       deployArtifact(lifeCycle)
     })
   }
@@ -131,37 +133,41 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    * Deploys the specified model artifact by either creating a new Jetty instance or by
    * downloading the artifact and setting up a new template/instance in Jetty.
    *
-   * @param artifact is the specified ModelArtifact to deploy.
+   * @param artifact is the specified ModelLifeCycle to deploy.
    */
-  private def deployArtifact(artifact: ModelArtifact) = {
+  private def deployArtifact(lifecycle: ModelLifeCycle) = {
+
+    val mavenArtifact = new MavenArtifactName(lifecycle.getArtifactName())
+    val artifact = lifecycle.getArtifactName()
+
     // Deploying requires a few things.
     // If we have deployed this artifact's war file before:
-    val fullyQualifiedName = artifact.getFullyQualifiedModelName()
+    val fullyQualifiedName = artifact.getFullyQualifiedName()
 
-    val contextPath = (artifact.getGroupName() + "/" +
-      artifact.getArtifactName()).replace('.', '/') + "/" + artifact.getModelVersion().toString()
+    val contextPath = (mavenArtifact.getGroupName() + "/" +
+      mavenArtifact.getArtifactName()).replace('.', '/') + "/" + artifact.getVersion().toString()
     // Populate a map of the various placeholder values to substitute in files
     val templateParamValues = Map[String, String](
-      MODEL_ARTIFACT -> artifact.getArtifactName(),
-      MODEL_GROUP -> artifact.getGroupName(),
-      MODEL_NAME -> artifact.getFullyQualifiedModelName(),
-      MODEL_VERSION -> artifact.getModelVersion().toString(),
+      MODEL_ARTIFACT -> mavenArtifact.getArtifactName(),
+      MODEL_GROUP -> mavenArtifact.getGroupName(),
+      MODEL_NAME -> artifact.getFullyQualifiedName(),
+      MODEL_VERSION -> artifact.getVersion().toString(),
       MODEL_REPO_URI -> mKijiModelRepo.getURI().toString(),
       CONTEXT_PATH -> contextPath)
 
-    if (mDeployedWarFiles.contains(artifact.getLocation())) {
+    if (mDeployedWarFiles.contains(lifecycle.getLocation())) {
       // 1) Create a new instance and done.
-      createNewInstance(artifact, mDeployedWarFiles.get(artifact.getLocation()).get,
+      createNewInstance(lifecycle, mDeployedWarFiles.get(lifecycle.getLocation()).get,
         templateParamValues)
     } else {
       // If not:
       // 1) Download the artifact to a temporary location
       val artifactFile = File.createTempFile("artifact", "war")
       // The artifact downloaded should reflect the name of the file that was uploaded
-      val finalArtifactName = String.format("%s.%s", artifact.getGroupName(),
-        new File(artifact.getLocation()).getName())
+      val finalArtifactName = String.format("%s.%s", mavenArtifact.getGroupName(),
+        new File(lifecycle.getLocation()).getName())
 
-      artifact.downloadArtifact(artifactFile)
+      lifecycle.downloadArtifact(artifactFile)
 
       // 2) Create a new Jetty template to map to the war file
       // Template is (fullyQualifiedName=warFileBase)
@@ -180,23 +186,23 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
         renameTo(new File(mBaseDir, String.format("%s/%s", TEMPLATES_FOLDER, templateDirName)))
 
       // 3) Create a new instance.
-      createNewInstance(artifact, fullyQualifiedName, templateParamValues)
+      createNewInstance(lifecycle, fullyQualifiedName, templateParamValues)
 
-      mDeployedWarFiles.put(artifact.getLocation(), fullyQualifiedName)
+      mDeployedWarFiles.put(lifecycle.getLocation(), fullyQualifiedName)
     }
   }
 
   /**
    * Creates a new Jetty overlay instance.
    *
-   * @param artifact is the ModelArtifact to deploy.
+   * @param artifact is the ModelLifeCycle to deploy.
    * @param templateName is the name of the template to which this instance belongs.
    * @param bookmarkParams contains a map of parameters and values used when configuring
    *        the WEB-INF specific files. An example of a parameter includes the context name
    *        used when addressing this lifecycle via HTTP which is dynamically populated based
-   *        on the fully qualified name of the ModelArtifact.
+   *        on the fully qualified name of the ModelLifeCycle.
    */
-  private def createNewInstance(artifact: ModelArtifact,
+  private def createNewInstance(lifecycle: ModelLifeCycle,
                                 templateName: String,
                                 bookmarkParams: Map[String, String]) = {
     // This will create a new instance by leveraging the template files on the classpath
@@ -206,7 +212,7 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
     tempInstanceDir.mkdir()
 
     val instanceDirName = String.format("%s=%s", templateName,
-      artifact.getFullyQualifiedModelName())
+      lifecycle.getArtifactName().getFullyQualifiedName())
 
     translateFile(OVERLAY_FILE, new File(tempInstanceDir, "overlay.xml"), bookmarkParams)
     translateFile(WEB_OVERLAY_FILE, new File(tempInstanceDir, "web-overlay.xml"), bookmarkParams)
@@ -216,7 +222,7 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
 
     tempInstanceDir.getParentFile().renameTo(finalInstanceDir)
 
-    mLifecycleToInstanceDir.put(artifact, finalInstanceDir)
+    mLifecycleToInstanceDir.put(lifecycle, finalInstanceDir)
     FileUtils.deleteDirectory(tempInstanceDir)
   }
 
@@ -230,7 +236,7 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    * @param bookmarkParams contains a map of parameters and values used when configuring
    *        the WEB-INF specific files. An example of a parameter includes the context name
    *        used when addressing this lifecycle via HTTP which is dynamically populated based
-   *        on the fully qualified name of the ModelArtifact.
+   *        on the fully qualified name of the ModelLifeCycle.
    */
   private def translateFile(filePath: String,
                             targetFile: File,
@@ -259,6 +265,6 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    * @return all the currently enabled lifecycles from the model repository.
    */
   private def getAllEnabledLifecycles = {
-    mKijiModelRepo.getModelLifecycles(null, 1, true)
+    mKijiModelRepo.getModelLifeCycles(null, 1, true)
   }
 }
