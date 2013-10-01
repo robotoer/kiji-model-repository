@@ -176,7 +176,7 @@
     <dependency>
       <groupId>org.kiji.modelrepo</groupId>
       <artifactId>kiji-model-repository</artifactId>
-      <version>${kiji-modelrepo.version}</version>
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>
