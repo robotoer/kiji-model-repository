@@ -21,25 +21,31 @@ package org.kiji.scoring.server
 
 import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.lang.System
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
-import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.schema.Kiji
-import org.kiji.schema.layout.KijiTableLayouts
-import org.kiji.schema.util.InstanceBuilder
-import org.scalatest.BeforeAndAfter
-import org.scalatest.Finders
-import org.scalatest.FlatSpec
-import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.schema.Kiji
-import org.kiji.schema.layout.KijiTableLayouts
-import org.kiji.schema.util.InstanceBuilder
-import com.google.common.io.Files
-import java.io.FileNotFoundException
 
-class TestScoringServer extends FlatSpec with BeforeAndAfter {
+import org.apache.hadoop.hbase.HBaseConfiguration
+
+import org.junit.After
+import org.junit.Assert
+import org.junit.Before
+import org.junit.Test
+
+import org.scalatest.junit.JUnitSuite
+
+import org.kiji.modelrepo.KijiModelRepository
+import org.kiji.schema.Kiji
+import org.kiji.schema.KijiInstaller
+import org.kiji.schema.KijiURI
+import org.kiji.schema.layout.KijiTableLayouts
+import org.kiji.schema.util.InstanceBuilder
+
+import com.google.common.io.Files
+
+class TestScoringServer extends JUnitSuite {
 
   // NOTE: This is necessary to properly construct the jar. If you change the
   // DummyExtractorScorer.scala file, then please amend this list. Since Scala is weird
@@ -55,12 +61,18 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
 
   var mFakeKiji: Kiji = null
   var mTempHome: File = null
+  var mModelRepo: KijiModelRepository = null
 
   val EMAIL_ADDRESS = "name@company.com"
+  val FAKE_URI = KijiURI.newBuilder("kiji://.fake.scoreserver:2181/default").build()
+  val HBASE_CONF = HBaseConfiguration.create()
 
-  before {
-    val builder = new InstanceBuilder("default");
-    mFakeKiji = builder.build();
+  @Before
+  def setup {
+
+    KijiInstaller.get().install(FAKE_URI, HBASE_CONF);
+    mFakeKiji = Kiji.Factory.open(FAKE_URI, HBASE_CONF)
+
     val tableLayout = KijiTableLayouts.getTableLayout("org/kiji/samplelifecycle/user_table.json")
     mFakeKiji.createTable("users", tableLayout)
     val table = mFakeKiji.openTable("users")
@@ -76,23 +88,27 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
     mTempHome = TestUtils.setupServerEnvironment(mFakeKiji.getURI())
   }
 
-  after {
+  @After
+  def tearDown {
+    mFakeKiji.deleteTable("users")
     mFakeKiji.release()
+    mTempHome.delete()
+    KijiInstaller.get().uninstall(FAKE_URI, HBASE_CONF);
   }
 
-  "ScoringServer" should "deploy and run a single lifecycle" in {
+  @Test
+  def testShouldDeployAndRunSingleLifecycle() {
     val jarFile = File.createTempFile("temp_artifact", ".jar")
     val jarOS = new JarOutputStream(new FileOutputStream(jarFile))
     mExtracterScorerClasses.foreach(addToJar(_, jarOS))
     jarOS.close()
 
-    TestUtils.deploySampleLifecycle(mFakeKiji, "0.0.1", jarFile.getAbsolutePath())
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
+    TestUtils.deploySampleLifecycle(mFakeKiji, jarFile.getAbsolutePath(), "0.0.1")
 
-    val server = ScoringServer.getServer(mTempHome.getCanonicalFile())
-    server.start()
+    val scoringServer = ScoringServer(mTempHome.getCanonicalFile())
+    scoringServer.start()
 
-    val connector = server.getConnectors()(0)
+    val connector = scoringServer.server.getConnectors()(0)
     // TODO: Eventually remove this sleep but since Jetty right now is set to scan a directory
     // for changes every second, this has to be here until we can control the deployment
     // synchronously (i.e. upon a change in the model repo, complete the deployment to and through
@@ -100,24 +116,25 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
     Thread.sleep(5000)
 
     val response = TestUtils.scoringServerResponse(connector.getLocalPort(),
-      "org/kiji/test/sample_lifecycle/0.0.1/?eid=[12345]")
-    server.stop()
+      "org/kiji/test/sample_model/0.0.1/?eid=[12345]")
+    scoringServer.stop()
     assert(Integer.parseInt(response.getValue.toString) == EMAIL_ADDRESS.length())
+    scoringServer.releaseResources
   }
 
-  "ScoringServer" should "hot undeploy a model lifecycle" in {
+  @Test
+  def testShouldHotUndeployModelLifecycle() {
     val jarFile = File.createTempFile("temp_artifact", ".jar")
     val jarOS = new JarOutputStream(new FileOutputStream(jarFile))
     mExtracterScorerClasses.foreach(addToJar(_, jarOS))
     jarOS.close()
 
-    TestUtils.deploySampleLifecycle(mFakeKiji, "0.0.1", jarFile.getAbsolutePath())
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
+    TestUtils.deploySampleLifecycle(mFakeKiji, jarFile.getAbsolutePath(), "0.0.1")
 
-    val server = ScoringServer.getServer(mTempHome.getCanonicalFile())
-    server.start()
+    val scoringServer = ScoringServer(mTempHome.getCanonicalFile())
+    scoringServer.start()
 
-    val connector = server.getConnectors()(0)
+    val connector = scoringServer.server.getConnectors()(0)
     // TODO: Eventually remove this sleep but since Jetty right now is set to scan a directory
     // for changes every second, this has to be here until we can control the deployment
     // synchronously (i.e. upon a change in the model repo, complete the deployment to and through
@@ -125,7 +142,7 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
     Thread.sleep(5000)
 
     val response = TestUtils.scoringServerResponse(connector.getLocalPort(),
-      "org/kiji/test/sample_lifecycle/0.0.1/?eid=[12345]")
+      "org/kiji/test/sample_model/0.0.1/?eid=[12345]")
 
     assert(Integer.parseInt(response.getValue().toString) == EMAIL_ADDRESS.length())
 
@@ -134,20 +151,22 @@ class TestScoringServer extends FlatSpec with BeforeAndAfter {
     writer.put(modelRepoTable.getEntityId(TestUtils.ARTIFACT_NAME,
         "0.0.1"), "model", "production_ready", false)
     writer.close()
+    modelRepoTable.release()
 
     // Same comment on the sleep as above.
     Thread.sleep(5000)
 
     try {
       TestUtils.scoringServerResponse(connector.getLocalPort(),
-        "org/kiji/test/sample_lifecycle/0.0.1/?eid=[12345]")
-      fail("Scoring server should have thrown a 404 but didn't")
+        "org/kiji/test/sample_model/0.0.1/?eid=[12345]")
+      Assert.fail("Scoring server should have thrown a 404 but didn't")
     } catch {
       case ex: FileNotFoundException => {
         assert(true)
       }
     }
-    server.stop()
+    scoringServer.stop()
+    scoringServer.releaseResources
   }
 
   /**

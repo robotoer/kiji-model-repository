@@ -21,20 +21,24 @@ package org.kiji.scoring.server
 
 import java.io.File
 import java.net.URL
+
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.JavaConverters.seqAsJavaListConverter
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.io.Files
+
 import org.kiji.modelrepo.tools.DeployModelRepoTool
 import org.kiji.schema.Kiji
 import org.kiji.schema.KijiURI
 import org.kiji.web.KijiScoringServerCell
+
 /**
  * Collection of random test utilities.
  */
 object TestUtils {
 
-  val ARTIFACT_NAME = "org.kiji.test.sample_lifecycle"
+  val ARTIFACT_NAME = "org.kiji.test.sample_model"
 
   /**
    * Deploys the specified artifact file to the model repository located associated
@@ -46,7 +50,7 @@ object TestUtils {
    * @param version is the version of the lifecycle.
    * @param artifactFile is the path to the artifact file to deploy.
    */
-  def deploySampleLifecycle(kiji: Kiji, version: String, artifactFile: String) {
+  def deploySampleLifecycle(kiji: Kiji, artifactFile: String, version: String) {
     val deployTool = new DeployModelRepoTool
     // Deploy some bogus artifact. We don't care that it's not executable code yet.
     val qualifiedName = String.format("%s-%s",ARTIFACT_NAME,version)
@@ -82,8 +86,11 @@ object TestUtils {
 
     tempModelDir.deleteOnExit()
 
-    val configMap = Map("port" -> 0, "repo_uri" -> repo_uri.toString(),
-      "repo_scan_interval" -> 2)
+    val configMap = Map(
+        "port" -> 0,
+        "repo_uri" -> repo_uri.toString(),
+        "repo_scan_interval" -> 2,
+        "num_acceptors" -> 2)
 
     val mapper = new ObjectMapper()
     mapper.writeValue(new File(confFolder, "configuration.json"), configMap.asJava)

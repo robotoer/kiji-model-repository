@@ -22,17 +22,25 @@ package org.kiji.scoring.server
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import java.util.HashMap
+
 import javax.servlet.http.HttpServlet
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
-import org.apache.hadoop.conf.Configuration
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.base.Preconditions
+
+import org.apache.hadoop.conf.Configuration
+
 import org.kiji.express.avro.AvroInputSpec
 import org.kiji.express.avro.AvroModelDefinition
 import org.kiji.express.avro.AvroModelEnvironment
 import org.kiji.express.modeling.config.ModelDefinition
 import org.kiji.express.modeling.config.ModelEnvironment
+import org.kiji.express.modeling.framework.ScoreProducer
+import org.kiji.mapreduce.kvstore.KeyValueStore
+import org.kiji.mapreduce.kvstore.impl.KeyValueStoreConfigValidator
+import org.kiji.mapreduce.produce.KijiProducer
 import org.kiji.modelrepo.ArtifactName
 import org.kiji.modelrepo.KijiModelRepository
 import org.kiji.schema.Kiji
@@ -42,9 +50,6 @@ import org.kiji.schema.tools.ToolUtils
 import org.kiji.schema.util.ProtocolVersion
 import org.kiji.schema.util.ToJson
 import org.kiji.web.KijiWebContext
-import org.kiji.mapreduce.kvstore.impl.KeyValueStoreConfigValidator
-import org.kiji.express.modeling.framework.ScoreProducer
-import org.kiji.mapreduce.kvstore.KeyValueStore
 
 /**
  * Servlet implementation that executes the scoring phase of a model lifecycle deployed
@@ -54,9 +59,10 @@ import org.kiji.mapreduce.kvstore.KeyValueStore
  */
 class GenericScoringServlet extends HttpServlet {
 
-  var mModelEnvironment: ModelEnvironment = null
-  var mModelDefinition: ModelDefinition = null
-  var mInputKijiURI: String = null
+  var mInputTable: String = null
+  var mInputKiji: Kiji = null
+  var mProducerContext: KijiWebContext = null
+  var mScoreProducer: KijiProducer = null
 
   val MODEL_REPO_URI = "model-repo-uri"
   val MODEL_GROUP = "model-group"
@@ -68,14 +74,16 @@ class GenericScoringServlet extends HttpServlet {
     val modelRepoURI = KijiURI.newBuilder(uri.toString()).build()
     val kiji = Kiji.Factory.open(modelRepoURI)
 
+    val modelName = getServletConfig().getInitParameter(MODEL_GROUP)
+    val modelArtifact = getServletConfig().getInitParameter(MODEL_ARTIFACT)
+    val modelVersion = ProtocolVersion.parse(getServletConfig().getInitParameter(MODEL_VERSION))
+
     try {
       // Fetch the model def/env from the repo
       val modelRepo = KijiModelRepository.open(kiji)
-      val modelName = getServletConfig().getInitParameter(MODEL_GROUP)
-      val modelArtifact = getServletConfig().getInitParameter(MODEL_ARTIFACT)
-      val modelVersion = ProtocolVersion.parse(getServletConfig().getInitParameter(MODEL_VERSION))
+
       val lifeCycleRow = modelRepo.getModelLifeCycle(
-          new ArtifactName(String.format("%s.%s", modelName, modelArtifact), modelVersion))
+        new ArtifactName(String.format("%s.%s", modelName, modelArtifact), modelVersion))
 
       val definitionAvro: AvroModelDefinition = lifeCycleRow.getDefinition()
       val environmentAvro: AvroModelEnvironment = lifeCycleRow.getEnvironment()
@@ -86,61 +94,69 @@ class GenericScoringServlet extends HttpServlet {
         .getInputSpec()
         .asInstanceOf[AvroInputSpec]
 
-      mInputKijiURI = inputConfig.getKijiSpecification().getTableUri()
+      val uri = inputConfig.getKijiSpecification().getTableUri()
+
+      val inputKijiURI = KijiURI.newBuilder(uri).build()
+      mInputKiji = Kiji.Factory.open(inputKijiURI)
+      mInputTable = inputKijiURI.getTable()
 
       val defAvro = ToJson.toJsonString(definitionAvro)
       val envAvro = ToJson.toJsonString(environmentAvro)
 
-      mModelEnvironment = ModelEnvironment.fromJson(envAvro)
-      mModelDefinition = ModelDefinition.fromJson(defAvro)
+      val modelEnvironment = ModelEnvironment.fromJson(envAvro)
+      val modelDefinition = ModelDefinition.fromJson(defAvro)
 
       modelRepo.close()
+
+      mScoreProducer = new ScoreProducer()
+      val conf = new Configuration()
+
+      conf.set(ScoreProducer.modelDefinitionConfKey, modelDefinition.toJson)
+      conf.set(ScoreProducer.modelEnvironmentConfKey, modelEnvironment.toJson)
+      mScoreProducer.setConf(conf)
+
+      val boundKVStores = new HashMap[String, KeyValueStore[_, _]]
+      KeyValueStoreConfigValidator.get().bindAndValidateRequiredStores(
+        mScoreProducer.getRequiredStores(), boundKVStores)
+      mProducerContext = new KijiWebContext(boundKVStores,
+          new KijiColumnName(mScoreProducer.getOutputColumn))
+      mScoreProducer.setup(mProducerContext)
+
     } finally {
       kiji.release()
     }
   }
 
+  override def destroy() {
+    mInputKiji.release()
+  }
+
   override def doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-    val writer = new BufferedWriter(new OutputStreamWriter(resp.getOutputStream()))
-    val command = req.getParameter("command")
 
-//    val inputSpec = mModelEnvironment.scoreEnvironment.get.inputConfig.asInstanceOf[KijiInputSpec]
-
-    val kijiURI = KijiURI.newBuilder(mInputKijiURI).build()
-    val kiji = Kiji.Factory.open(kijiURI)
-    val table = kiji.openTable(kijiURI.getTable())
-
+    // Fetch the entity_id parameter from the URL. Fail if not specified.
     val eid = req.getParameter("eid")
-
     Preconditions.checkNotNull(eid, "Entity ID required!", "")
-    if (eid != null) {
+
+    // Open the writer to send the data back.
+    val jsonOutputWriter = new BufferedWriter(new OutputStreamWriter(resp.getOutputStream()))
+    try {
+      val table = mInputKiji.openTable(mInputTable)
       val entityId = ToolUtils.createEntityIdFromUserInputs(eid, table.getLayout());
-      val kp = new ScoreProducer()
-      val conf = new Configuration()
 
-      conf.set(ScoreProducer.modelDefinitionConfKey, mModelDefinition.toJson)
-      conf.set(ScoreProducer.modelEnvironmentConfKey, mModelEnvironment.toJson)
-      kp.setConf(conf)
-
-      val boundKVStores = new HashMap[String, KeyValueStore[_, _]]
-      KeyValueStoreConfigValidator.get().bindAndValidateRequiredStores(
-        kp.getRequiredStores(), boundKVStores)
-
-      val dataReq = kp.getDataRequest()
+      // Fetch the row given the data request specified in the environment
+      val dataReq = mScoreProducer.getDataRequest()
       val reader = table.openTableReader()
       val rowData = reader.get(entityId, dataReq)
       // TODO: How to know if rowdata is empty to avoid calling score?
       reader.close()
-      val ctx = new KijiWebContext(boundKVStores, new KijiColumnName(kp.getOutputColumn))
 
-      kp.setup(ctx)
-      kp.produce(rowData, ctx)
+      mScoreProducer.produce(rowData, mProducerContext)
+
       val mapper = new ObjectMapper()
-      writer.write(mapper.valueToTree(ctx.getWrittenCell()).toString())
+      jsonOutputWriter.write(mapper.valueToTree(mProducerContext.getWrittenCell()).toString())
+      table.release()
+    } finally {
+      jsonOutputWriter.close()
     }
-
-    writer.close()
-    table.release()
-    kiji.release()
   }
 }

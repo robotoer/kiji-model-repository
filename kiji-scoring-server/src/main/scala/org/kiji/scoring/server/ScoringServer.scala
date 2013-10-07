@@ -23,22 +23,86 @@ import java.io.File
 
 import org.eclipse.jetty.deploy.DeploymentManager
 import org.eclipse.jetty.overlays.OverlayedAppProvider
+import org.eclipse.jetty.server.AbstractConnector
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.handler.ContextHandlerCollection
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerCollection
-import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.schema.Kiji
-import org.kiji.schema.KijiURI
-
-import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.schema.Kiji
-import org.kiji.schema.KijiURI
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
-case class ServerConfiguration(port: Int, repo_uri: String, repo_scan_interval: Int)
+import org.kiji.modelrepo.KijiModelRepository
+import org.kiji.schema.Kiji
+import org.kiji.schema.KijiURI
+
+case class ServerConfiguration(
+  port: Int,
+  repo_uri: String,
+  repo_scan_interval: Int,
+  num_acceptors: Int)
+
+/**
+ * Scoring Server class. Provides a few wrappers around the Jetty server underneath.
+ *
+ * @param mBaseDir is the base directory in which the expected models and conf directories are
+ *     expected to exist.
+ * @param mServerConfig is the scoring server configuration containing information such as the Kiji
+ *     URI.
+ */
+class ScoringServer(mBaseDir: File, mServerConfig: ServerConfiguration) {
+
+  val kijiURI = KijiURI.newBuilder(mServerConfig.repo_uri).build()
+  val kiji = Kiji.Factory.open(kijiURI)
+  val kijiModelRepo = KijiModelRepository.open(kiji)
+
+  // Start the model lifecycle scanner thread that will scan the model repository
+  // for changes.
+  val lifeCycleScanner = new ModelRepoScanner(
+    kijiModelRepo,
+    mServerConfig.repo_scan_interval,
+    mBaseDir)
+  val lifeCycleScannerThread = new Thread(lifeCycleScanner)
+  lifeCycleScannerThread.start()
+
+  val server = new Server(mServerConfig.port)
+
+  // Increase the number of acceptor threads.
+  val connector = server.getConnectors()(0).asInstanceOf[AbstractConnector]
+  connector.setAcceptors(mServerConfig.num_acceptors)
+
+  val handlers = new HandlerCollection()
+
+  val contextHandler = new ContextHandlerCollection()
+  val deploymentManager = new DeploymentManager()
+  val overlayedProvider = new OverlayedAppProvider
+
+  overlayedProvider.setScanDir(new File(mBaseDir, ScoringServer.MODELS_FOLDER))
+  // For now scan this directory once per second.
+  overlayedProvider.setScanInterval(1)
+
+  deploymentManager.setContexts(contextHandler)
+  deploymentManager.addAppProvider(overlayedProvider)
+
+  handlers.addHandler(contextHandler)
+  handlers.addHandler(new DefaultHandler())
+
+  server.setHandler(handlers);
+  server.addBean(deploymentManager)
+
+  def start() {
+    server.start()
+  }
+
+  def stop() {
+    server.stop()
+  }
+
+  def releaseResources() {
+    lifeCycleScanner.shutdown
+    kijiModelRepo.close()
+  }
+}
 
 /**
  * Main entry point for the scoring server. This pulls in and combines various Jetty components
@@ -47,10 +111,9 @@ case class ServerConfiguration(port: Int, repo_uri: String, repo_scan_interval: 
 object ScoringServer {
 
   val CONF_FILE = "configuration.json"
-
-  val CONF_FOLDER = "conf"
   val MODELS_FOLDER = "models"
   val LOGS_FOLDER = "logs"
+  val CONF_FOLDER = "conf"
 
   def main(args: Array[String]): Unit = {
 
@@ -60,9 +123,15 @@ object ScoringServer {
       return
     }
 
-    val server = getServer(null)
-    server.start()
-    server.join();
+    val scoringServer = ScoringServer(null)
+
+    // Gracefully shutdown the deployment thread to let it finish anything that it may be doing
+    sys.ShutdownHookThread {
+      scoringServer.releaseResources
+    }
+
+    scoringServer.start()
+    scoringServer.server.join();
   }
 
   /**
@@ -70,46 +139,11 @@ object ScoringServer {
    * @param baseDir
    * @return a constructed Jetty server.
    */
-  def getServer(baseDir: File):Server = {
-
+  def apply(baseDir: File): ScoringServer = {
     val confFile = new File(baseDir, String.format("%s/%s", CONF_FOLDER, CONF_FILE))
     val config = getConfig(confFile)
 
-    val kijiURI = KijiURI.newBuilder(config.repo_uri).build()
-    val kiji = Kiji.Factory.open(kijiURI)
-    val kijiModelRepo = KijiModelRepository.open(kiji)
-
-    // Start the model lifecycle scanner thread that will scan the model repository
-    // for changes.
-    val lifeCycleScanner = new ModelRepoScanner(kijiModelRepo, config.repo_scan_interval, baseDir)
-    val lifeCycleScannerThread = new Thread(lifeCycleScanner)
-    lifeCycleScannerThread.start()
-
-    val server = new Server(config.port)
-    val handlers = new HandlerCollection()
-
-    val contextHandler = new ContextHandlerCollection()
-    val deploymentManager = new DeploymentManager()
-    val overlayedProvider = new OverlayedAppProvider
-
-    overlayedProvider.setScanDir(new File(baseDir, MODELS_FOLDER))
-    // For now scan this directory once per second.
-    overlayedProvider.setScanInterval(1)
-
-    deploymentManager.setContexts(contextHandler)
-    deploymentManager.addAppProvider(overlayedProvider)
-
-    handlers.addHandler(contextHandler)
-    handlers.addHandler(new DefaultHandler())
-
-    server.setHandler(handlers);
-    server.addBean(deploymentManager)
-
-    // Gracefully shutdown the deployment thread to let it finish anything that it may be doing
-    sys.ShutdownHookThread {
-      lifeCycleScanner.shutdown
-    }
-    server
+    new ScoringServer(baseDir, config)
   }
 
   /**

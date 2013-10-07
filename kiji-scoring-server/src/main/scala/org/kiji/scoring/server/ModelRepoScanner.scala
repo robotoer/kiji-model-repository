@@ -33,6 +33,8 @@ import org.kiji.modelrepo.KijiModelRepository
 import org.kiji.modelrepo.ModelLifeCycle
 import org.kiji.modelrepo.ArtifactName
 import org.kiji.modelrepo.uploader.MavenArtifactName
+import scala.collection.immutable.ListMap
+import com.google.common.base.Preconditions
 
 /**
  * Performs the actual deployment/undeployment of model lifecycles by scanning the model
@@ -60,17 +62,13 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
   val WEB_OVERLAY_FILE = "/org/kiji/scoring/server/instance/web-overlay.xml"
   val JETTY_TEMPLATE_FILE = "/org/kiji/scoring/server/template/template.xml"
 
-  val INSTANCES_FOLDER = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.INSTANCES)
-  val WEBAPPS_FOLDER = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.WEBAPPS)
-  val TEMPLATES_FOLDER = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.TEMPLATES)
-
-  var mIsRunning = true
+  var mIsRunning = false
 
   /**
    *  Stores a set of deployed lifecycles (identified by group.artifact-version) mapping
    *  to the actual folder that houses this lifecycle.
    */
-  private val mLifecycleToInstanceDir = MutableMap[ModelLifeCycle, File]()
+  private val mArtifactToInstanceDir = MutableMap[ArtifactName, File]()
 
   /**
    *  Stores a map of model artifact locations to their corresponding template name so that
@@ -80,6 +78,121 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    *  (group.artifact-version) to which this location is mapped to.
    */
   private val mDeployedWarFiles = MutableMap[String, String]()
+
+  initializeState
+
+  /**
+   * Initializes the state of the internal maps from disk but going through the
+   * templates and webapps folders to populate different maps. Also will clean up files/folders
+   * that are not valid.
+   *
+   * This is called upon construction of the ModelRepoScanner and can't be called when the scanner
+   * is running.
+   */
+  private def initializeState() {
+
+    if(mIsRunning) {
+      throw new IllegalStateException("Can not initialize state while scanner is running.")
+    }
+
+    // This will load up the in memory data structures for the scoring server
+    // based on information from disk. First go through the webapps and any webapp that doesn't
+    // have a corresponding location file, delete.
+
+    // Any undeploys will happen in the checkForUpdates call at the end.
+    val templatesDir = getTemplatesFolder
+    val webappsDir = getWebappsFolder
+    val instancesDir = getInstancesFolder
+
+    // Validate webapps
+    val (validWarFiles, invalidWarFiles) = webappsDir.listFiles().partition(f => {
+      val locationFile = new File(webappsDir, f.getName() + ".loc")
+      locationFile.exists() && f.getName().endsWith(".war") && f.isFile()
+    })
+
+    invalidWarFiles.foreach(f => {
+      delete(f)
+    })
+
+    // Validate the templates to make sure that they are pointing to a valid
+    // war file.
+    val (validTemplates, invalidTemplates) = templatesDir.listFiles()
+      .partition(templateDir => {
+        val (templateName, warBaseName) = parseDirectoryName(templateDir.getName())
+        // For a template to be valid, it must have a name and warBaseName AND the
+        // warBaseName.war must exist AND warBaseName.war.loc must also exist
+        val warFile = new File(webappsDir, warBaseName.getOrElse("") + ".war")
+        val locFile = new File(webappsDir, warBaseName.getOrElse("") + ".war.loc")
+
+        !warBaseName.isEmpty && warFile.exists() && locFile.exists() && templateDir.isDirectory()
+      })
+
+    invalidTemplates.foreach(template => {
+      LOG.info("Deleting invalid template directory " + template)
+      delete(template)
+    })
+
+    validTemplates.foreach(template => {
+      val (templateName, warBaseName) = parseDirectoryName(template.getName())
+      val locFile = new File(webappsDir, warBaseName.get + ".war.loc")
+      val location = getLocationInformation(locFile)
+      mDeployedWarFiles.put(location, templateName)
+    })
+
+    // Loop through the instances and add them to the map.
+    instancesDir.listFiles().foreach(instance => {
+      //templateName=artifactFullyQualifiedName
+      val (templateName, artifactName) = parseDirectoryName(instance.getName())
+
+      // This is an inefficient lookup on validTemplates but it's a one time thing on
+      // startup of the server scanner.
+      if (!instance.isDirectory() || artifactName.isEmpty
+        || !validTemplates.contains(templateName)) {
+        LOG.info("Deleting invalid instance " + instance.getPath())
+        delete(instance)
+      } else {
+        try {
+          val parsedArtifact = new ArtifactName(artifactName.get)
+          mArtifactToInstanceDir.put(parsedArtifact, instance)
+        } catch {
+          case ex => delete(instance)
+        }
+      }
+    })
+
+    checkForUpdates
+
+    mIsRunning = true
+  }
+
+  /**
+   * Deletes a given file depending on whether it's an actual file or a directory.
+   * @param file is the file/folder to delete.
+   */
+  private def delete(file: File) {
+    if (file.isDirectory()) {
+      FileUtils.deleteDirectory(file)
+    } else {
+      file.delete()
+    }
+  }
+
+  /**
+   * Parses a Jetty template/instance directory using the "=" as the delimiter. Returns
+   * the two parts that comprise the directory.
+   *
+   * @param inputDirectory is the directory name to parse.
+   * @return a 2-tuple containing the two strings on either side of the "=" operator. If there
+   *     "=" in the string, then the second part will be None.
+   */
+  private def parseDirectoryName(inputDirectory: String): (String, Option[String]) = {
+    val parts = inputDirectory.split("=")
+    if (parts.length == 1) {
+      (parts(0), None)
+    } else {
+      (parts(0), Some(parts(1)))
+    }
+  }
 
   /**
    * Turns off the internal run flag to safely stop the scanning of the model repository
@@ -100,20 +213,24 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
   /**
    * Checks the model repository table for updates and deploys/undeploys lifecycles
    * as necessary.
+   *
+   * @return a two-tuple of the number of lifecycles deployed and undeployed
    */
-  def checkForUpdates() {
-    val allEnabledLifecycles = getAllEnabledLifecycles
+  def checkForUpdates: (Int, Int) = {
+    val allEnabledLifecycles = getAllEnabledLifecycles.asScala.
+      foldLeft(ListMap[ArtifactName, ModelLifeCycle]())((currentMap, lifecycle) => {
+        currentMap + (lifecycle.getArtifactName() -> lifecycle)
+      })
 
     // Split the lifecycle map into those that are already deployed and those that
     // should be undeployed (based on whether or not the currently enabled lifecycles
     // contain the deployed lifecycle.
     val (toKeep, toUndeploy) =
-      mLifecycleToInstanceDir.partition(kv => allEnabledLifecycles.contains(kv._1))
+      mArtifactToInstanceDir.partition(kv => allEnabledLifecycles.contains(kv._1))
 
     // For each lifecycle to undeploy, remove it.
     toUndeploy.map(kv => {
-      val (lifeCycle, location) = kv
-      val artifact = lifeCycle.getArtifactName()
+      val (artifact, location) = kv
 
       LOG.info("Undeploying lifecycle " + artifact.getFullyQualifiedName() +
         " location = " + location)
@@ -122,11 +239,14 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
 
     // Now find the set of lifecycles to add by diffing the current with the already
     // deployed and add those.
-    allEnabledLifecycles.asScala.diff(toKeep.keySet).map(lifeCycle => {
-      val artifact = lifeCycle.getArtifactName()
+    val toDeploy = allEnabledLifecycles.keySet.diff(toKeep.keySet)
+    toDeploy.map(artifact => {
+      val lifecycle = allEnabledLifecycles(artifact)
       LOG.info("Deploying artifact " + artifact.getFullyQualifiedName())
-      deployArtifact(lifeCycle)
+      deployArtifact(lifecycle)
     })
+
+    (toDeploy.size, toUndeploy.size)
   }
 
   /**
@@ -165,7 +285,7 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
       val artifactFile = File.createTempFile("artifact", "war")
       // The artifact downloaded should reflect the name of the file that was uploaded
       val finalArtifactName = String.format("%s.%s", mavenArtifact.getGroupName(),
-        new File(lifecycle.getLocation()).getName())
+        FilenameUtils.getName(lifecycle.getLocation()))
 
       lifecycle.downloadArtifact(artifactFile)
 
@@ -179,17 +299,54 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
 
       translateFile(JETTY_TEMPLATE_FILE, new File(tempTemplateDir, "template.xml"),
         Map[String, String]())
-      artifactFile.renameTo(new File(mBaseDir,
-        String.format("%s/%s", WEBAPPS_FOLDER, finalArtifactName)))
+
+      // Move the temporarily downloaded artifact to its final location.
+      artifactFile.renameTo(new File(getWebappsFolder, finalArtifactName))
+
+      // As part of the state necessary to reconstruct the scoring server on cold start, write
+      // out the location of the lifecycle (which is used to determine if a war file needs
+      // to actually be deployed when a lifecycle is deployed) to a text file.
+      writeLocationInformation(finalArtifactName, lifecycle)
 
       val moveResult = tempTemplateDir.getParentFile().
-        renameTo(new File(mBaseDir, String.format("%s/%s", TEMPLATES_FOLDER, templateDirName)))
+        renameTo(new File(getTemplatesFolder, templateDirName))
 
       // 3) Create a new instance.
       createNewInstance(lifecycle, fullyQualifiedName, templateParamValues)
 
       mDeployedWarFiles.put(lifecycle.getLocation(), fullyQualifiedName)
     }
+  }
+
+  /**
+   * Writes out the relative URI of the lifecycle (in the model repository) to a known
+   * text file in the webapps folder. This is used later on server reboot to make sure that
+   * currently enabled and previously deployed lifecycles are represented in the internal
+   * server state. The file name will be <artifactFileName>.loc.
+   *
+   * @param artifactFileName is the name of the artifact file name that is being locally deployed.
+   * @param lifecycle is the model lifecycle object that is associated with the artifact.
+   */
+  private def writeLocationInformation(artifactFileName: String, lifecycle: ModelLifeCycle) = {
+    val locationFile = artifactFileName + ".loc"
+    val locationWriter = new PrintWriter(new File(getWebappsFolder, locationFile))
+    locationWriter.println(lifecycle.getLocation())
+    locationWriter.close()
+  }
+
+  /**
+   * Returns the location information from the specified file. The input file is the name of the
+   * location file that was written using the writeLocationInformation method.
+   *
+   * @param locationFile is the name of the location file containing the lifecycle location
+   *                     information.
+   * @return the location information in the file.
+   */
+  private def getLocationInformation(locationFile: File): String = {
+    val inputSource = Source.fromFile(locationFile)
+    val location = inputSource.mkString.trim()
+    inputSource.close
+    location
   }
 
   /**
@@ -208,21 +365,23 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
     // This will create a new instance by leveraging the template files on the classpath
     // and create the right directory. Maybe first create the directory in a temp location and
     // move to the right place.
+    val artifact = lifecycle.getArtifactName()
+
     val tempInstanceDir = new File(Files.createTempDir(), "WEB-INF")
     tempInstanceDir.mkdir()
 
+    // templateName=artifactFullyQualifiedName
     val instanceDirName = String.format("%s=%s", templateName,
-      lifecycle.getArtifactName().getFullyQualifiedName())
+      artifact.getFullyQualifiedName())
 
     translateFile(OVERLAY_FILE, new File(tempInstanceDir, "overlay.xml"), bookmarkParams)
     translateFile(WEB_OVERLAY_FILE, new File(tempInstanceDir, "web-overlay.xml"), bookmarkParams)
 
-    val finalInstanceDir = new File(mBaseDir,
-      String.format("%s/%s", INSTANCES_FOLDER, instanceDirName))
+    val finalInstanceDir = new File(getInstancesFolder, instanceDirName)
 
     tempInstanceDir.getParentFile().renameTo(finalInstanceDir)
 
-    mLifecycleToInstanceDir.put(lifecycle, finalInstanceDir)
+    mArtifactToInstanceDir.put(artifact, finalInstanceDir)
     FileUtils.deleteDirectory(tempInstanceDir)
   }
 
@@ -266,5 +425,35 @@ class ModelRepoScanner(mKijiModelRepo: KijiModelRepository,
    */
   private def getAllEnabledLifecycles = {
     mKijiModelRepo.getModelLifeCycles(null, 1, true)
+  }
+
+  /**
+   * Returns the webapps folder relative to the base directory of the server.
+   *
+   * @return the webapps folder relative to the base directory of the server.
+   */
+  def getWebappsFolder: File = {
+    val webappsFolder = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.WEBAPPS)
+    new File(mBaseDir, webappsFolder.getPath())
+  }
+
+  /**
+   * Returns the instances folder relative to the base directory of the server.
+   *
+   * @return the instances folder relative to the base directory of the server.
+   */
+  def getInstancesFolder: File = {
+    val instancesFolder = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.INSTANCES)
+    new File(mBaseDir, instancesFolder.getPath())
+  }
+
+  /**
+   * Returns the templates folder relative to the base directory of the server.
+   *
+   * @return the templates folder relative to the base directory of the server.
+   */
+  def getTemplatesFolder: File = {
+    val templatesFolder = new File(ScoringServer.MODELS_FOLDER, OverlayedAppProvider.TEMPLATES)
+    new File(mBaseDir, templatesFolder.getPath())
   }
 }

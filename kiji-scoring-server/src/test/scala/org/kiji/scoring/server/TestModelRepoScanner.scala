@@ -21,71 +21,83 @@ package org.kiji.scoring.server
 
 import java.io.File
 
-import scala.collection.JavaConverters.mutableMapAsJavaMapConverter
-import scala.collection.JavaConverters.seqAsJavaListConverter
-import scala.collection.mutable.Map
-
+import org.apache.commons.io.FileUtils
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
 import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.modelrepo.tools.DeployModelRepoTool
 import org.kiji.schema.Kiji
 import org.kiji.schema.util.InstanceBuilder
-import org.scalatest.BeforeAndAfter
-import org.scalatest.FlatSpec
+import org.kiji.scoring.server.TestUtils.deploySampleLifecycle
+import org.kiji.scoring.server.TestUtils.setupServerEnvironment
+import org.scalatest.junit.JUnitSuite
 
-import org.kiji.modelrepo.KijiModelRepository
-import org.kiji.modelrepo.tools.DeployModelRepoTool
-import org.kiji.schema.Kiji
-import org.kiji.schema.util.InstanceBuilder
-
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.io.Files
-import org.kiji.scoring.server.TestUtils._
 
-class TestModelRepoScanner extends FlatSpec with BeforeAndAfter {
+import org.kiji.modelrepo.KijiModelRepository
+import org.kiji.schema.Kiji
+import org.kiji.schema.util.InstanceBuilder
+import org.kiji.scoring.server.TestUtils.deploySampleLifecycle
+import org.kiji.scoring.server.TestUtils.setupServerEnvironment
+
+class TestModelRepoScanner extends JUnitSuite {
 
   var mFakeKiji: Kiji = null
-  var mTempHome: File = null
+  var mTempServerHome: File = null
+  var mTempKMR: File = null
+  var mModelRepo: KijiModelRepository = null
 
-  before {
+  @Before
+  def setup {
     val builder = new InstanceBuilder("default");
     mFakeKiji = builder.build();
-    mTempHome = setupServerEnvironment(mFakeKiji.getURI())
-    KijiModelRepository.install(mFakeKiji, Files.createTempDir().toURI())
+    mTempServerHome = setupServerEnvironment(mFakeKiji.getURI())
+    mTempKMR = Files.createTempDir()
+    KijiModelRepository.install(mFakeKiji, mTempKMR.toURI())
+    mModelRepo = KijiModelRepository.open(mFakeKiji)
   }
 
-  after {
+  @After
+  def tearDown {
+    mModelRepo.close()
     mFakeKiji.release()
+    FileUtils.deleteDirectory(mTempServerHome)
+    FileUtils.deleteDirectory(mTempKMR)
   }
 
-  "ModelRepoScanner" should "deploy a single lifecycle" in {
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
-    val bogusArtifact = new File(mTempHome,"conf/configuration.json").getAbsolutePath()
+  @Test
+  def testShouldDeployASingleLifecycle {
+
+    val bogusArtifact = new File(mTempServerHome, "conf/configuration.json").getAbsolutePath()
 
     deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.1")
 
-    val scanner = new ModelRepoScanner(modelRepo, 2, mTempHome)
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
     scanner.checkForUpdates
-    val webappFile = new File(mTempHome, "models/webapps/org.kiji.test.sample_model-0.0.1.war")
-    val templateDir = new File(mTempHome,
+    val webappFile = new File(mTempServerHome,
+      "models/webapps/org.kiji.test.sample_model-0.0.1.war")
+    val locationFile = new File(mTempServerHome,
+      "models/webapps/org.kiji.test.sample_model-0.0.1.war.loc")
+    val templateDir = new File(mTempServerHome,
       "models/templates/org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1")
-    val instanceDir = new File(mTempHome,
+    val instanceDir = new File(mTempServerHome,
       "models/instances/org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1")
 
     assert(webappFile.exists())
+    assert(locationFile.exists())
     assert(templateDir.exists())
     assert(instanceDir.exists())
-    modelRepo.close()
   }
 
-  "ModelRepoScanner" should "undeploy a single lifecycle" in {
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
-    val bogusArtifact = new File(mTempHome,"conf/configuration.json").getAbsolutePath()
+  @Test
+  def testShouldUndeployASingleLifecycle {
+    val bogusArtifact = new File(mTempServerHome, "conf/configuration.json").getAbsolutePath()
 
-    deploySampleLifecycle(mFakeKiji,bogusArtifact, "0.0.1")
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.1")
 
-    val scanner = new ModelRepoScanner(modelRepo, 2, mTempHome)
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
     scanner.checkForUpdates
-    val instanceDir = new File(mTempHome,
+    val instanceDir = new File(mTempServerHome,
       "models/instances/org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1")
     assert(instanceDir.exists())
 
@@ -98,15 +110,14 @@ class TestModelRepoScanner extends FlatSpec with BeforeAndAfter {
     modelRepoTable.release()
     scanner.checkForUpdates
     assert(!instanceDir.exists())
-    modelRepo.close()
   }
 
-  "ModelRepoScanner" should "link multiple lifecycles to the same artifact" in {
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
-    val bogusArtifact = new File(mTempHome,"conf/configuration.json").getAbsolutePath()
+  @Test
+  def testShouldLinkMultipleLifecyclesToSameArtifact {
+    val bogusArtifact = new File(mTempServerHome, "conf/configuration.json").getAbsolutePath()
 
-    deploySampleLifecycle(mFakeKiji,bogusArtifact, "0.0.1")
-    deploySampleLifecycle(mFakeKiji,bogusArtifact, "0.0.2")
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.1")
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.2")
 
     // Force the location of 0.0.2 to be that of 0.0.1
     val modelRepoTable = mFakeKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME)
@@ -117,30 +128,28 @@ class TestModelRepoScanner extends FlatSpec with BeforeAndAfter {
     writer.close()
     modelRepoTable.release()
 
-    val scanner = new ModelRepoScanner(modelRepo, 2, mTempHome)
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
     scanner.checkForUpdates
-    // Check that we have two instances pointing at 0.0.2 since that is what is deployed
-    // first (rows are selected in reverse time order).
-    assert(new File(mTempHome, "models/instances/"
-      + "org.kiji.test.sample_model-0.0.2=org.kiji.test.sample_model-0.0.1").exists())
 
-    assert(new File(mTempHome, "models/instances/"
-      + "org.kiji.test.sample_model-0.0.2=org.kiji.test.sample_model-0.0.2").exists())
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1").exists())
 
-    assert(new File(mTempHome, "models/webapps/"
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.2").exists())
+
+    assert(new File(mTempServerHome, "models/webapps/"
       + "org.kiji.test.sample_model-0.0.1.war").exists())
-    assert(!new File(mTempHome, "models/webapps/"
+    assert(!new File(mTempServerHome, "models/webapps/"
       + "org.kiji.test.sample_model-0.0.2.war").exists())
 
-    modelRepo.close()
   }
 
-  "ModelRepoScanner" should "undeploy an artifact after multiple lifecycles have been deployed" in {
-    val modelRepo = KijiModelRepository.open(mFakeKiji)
-    val bogusArtifact = new File(mTempHome,"conf/configuration.json").getAbsolutePath()
+  @Test
+  def testShouldUndeployAnArtifactAfterMultipleLifecyclesAreDeployed {
+    val bogusArtifact = new File(mTempServerHome, "conf/configuration.json").getAbsolutePath()
 
-    deploySampleLifecycle(mFakeKiji,bogusArtifact, "0.0.1")
-    deploySampleLifecycle(mFakeKiji,bogusArtifact, "0.0.2")
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.1")
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.2")
 
     // Force the location of 0.0.2 to be that of 0.0.1
     val modelRepoTable = mFakeKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME)
@@ -149,28 +158,95 @@ class TestModelRepoScanner extends FlatSpec with BeforeAndAfter {
 
     writer.put(eid, "model", "location", "org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war")
 
-    val scanner = new ModelRepoScanner(modelRepo, 2, mTempHome)
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
     scanner.checkForUpdates
-    // Check that we have two instances pointing at 0.0.2 since that is what is deployed
-    // first (rows are selected in reverse time order).
-    assert(new File(mTempHome, "models/instances/"
-      + "org.kiji.test.sample_model-0.0.2=org.kiji.test.sample_model-0.0.1").exists())
 
-    assert(new File(mTempHome, "models/instances/"
-      + "org.kiji.test.sample_model-0.0.2=org.kiji.test.sample_model-0.0.2").exists())
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1").exists())
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.2").exists())
 
-    assert(new File(mTempHome, "models/webapps/"
+    assert(new File(mTempServerHome, "models/webapps/"
       + "org.kiji.test.sample_model-0.0.1.war").exists())
-    assert(!new File(mTempHome, "models/webapps/"
+    assert(new File(mTempServerHome, "models/webapps/"
+      + "org.kiji.test.sample_model-0.0.1.war.loc").exists())
+    assert(!new File(mTempServerHome, "models/webapps/"
       + "org.kiji.test.sample_model-0.0.2.war").exists())
 
     writer.put(eid, "model", "production_ready", false)
     scanner.checkForUpdates
-    assert(!new File(mTempHome, "models/instances/"
+    assert(!new File(mTempServerHome, "models/instances/"
       + "org.kiji.test.sample_model-0.0.2=org.kiji.test.sample_model-0.0.2").exists())
 
     writer.close()
     modelRepoTable.release()
-    modelRepo.close()
+  }
+
+  @Test
+  def testShouldResurrectStateFromDisk {
+    testShouldDeployASingleLifecycle
+
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
+    val (deployed, undeployed) = scanner.checkForUpdates
+    assert(deployed == 0)
+
+    // Now let's make sure that the state is right by deploying a 0.0.2 that should rely on
+    // state of 0.0.1 in the scanner to make sure that we deploy things correctly.
+    val bogusArtifact = new File(mTempServerHome, "conf/configuration.json").getAbsolutePath()
+    deploySampleLifecycle(mFakeKiji, bogusArtifact, "0.0.2")
+
+    // Force the location of 0.0.2 to be that of 0.0.1
+    val modelRepoTable = mFakeKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME)
+    val writer = modelRepoTable.openTableWriter()
+    val eid = modelRepoTable.getEntityId("org.kiji.test.sample_model", "0.0.2")
+
+    writer.put(eid, "model", "location", "org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war")
+    writer.close()
+    modelRepoTable.release()
+
+    val (deployedAgain, undeployedAgain) = scanner.checkForUpdates
+    assert(deployedAgain == 1)
+    assert(undeployedAgain == 0)
+
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.1").exists())
+
+    assert(new File(mTempServerHome, "models/instances/"
+      + "org.kiji.test.sample_model-0.0.1=org.kiji.test.sample_model-0.0.2").exists())
+
+    assert(new File(mTempServerHome, "models/webapps/"
+      + "org.kiji.test.sample_model-0.0.1.war").exists())
+    assert(!new File(mTempServerHome, "models/webapps/"
+      + "org.kiji.test.sample_model-0.0.2.war").exists())
+  }
+
+  @Test
+  def testShouldRemoveInvalidArtifacts {
+    val scanner = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
+
+    // Create a few invalid webapps. Some directories, some files.
+    val webappsFolder = scanner.getWebappsFolder
+    assert(new File(webappsFolder, "invalid_war.war").createNewFile())
+    assert(new File(webappsFolder, "invalid_war_folder").mkdir())
+    assert(new File(webappsFolder, "invalid_war.txt").createNewFile())
+
+    // Create a few invalid template folders and files
+    val templatesFolder = scanner.getTemplatesFolder
+    assert(new File(templatesFolder, "invalid_template.txt").createNewFile())
+    assert(new File(templatesFolder, "invalid_template_dir").mkdir())
+    assert(new File(templatesFolder, "invalidname=invalidvalue").mkdir())
+
+    // Create a few invalid instances
+    val instancesFolder = scanner.getInstancesFolder
+    assert(new File(instancesFolder, "invalid_template.txt").createNewFile())
+    assert(new File(instancesFolder, "invalid_template_dir").mkdir())
+    assert(new File(instancesFolder, "invalidname=invalidvalue").mkdir())
+
+    val scanner2 = new ModelRepoScanner(mModelRepo, 2, mTempServerHome)
+
+    // Make sure that webapps don't have any of the invalid stuff
+    assert(webappsFolder.list().size == 0)
+    assert(instancesFolder.list().size == 0)
+    assert(templatesFolder.list().size == 0)
   }
 }

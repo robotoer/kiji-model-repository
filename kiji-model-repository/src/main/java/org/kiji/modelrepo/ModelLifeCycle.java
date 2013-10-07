@@ -342,21 +342,6 @@ public class ModelLifeCycle {
     return true;
   }
 
-  @Override
-  public boolean equals(Object rhs) {
-    if (rhs == null) {
-      return false;
-    } else {
-      return (rhs instanceof ModelLifeCycle && ((ModelLifeCycle) rhs).mArtifact
-          .equals(this.mArtifact));
-    }
-  }
-
-  @Override
-  public int hashCode() {
-    return mArtifact.hashCode();
-  }
-
   /**
    * Returns the canonical name of a model life cycle given the group and artifact name. This
    * is here as the layout supports a single name field but other parts of the system support

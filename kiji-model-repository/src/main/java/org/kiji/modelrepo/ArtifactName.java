@@ -40,8 +40,8 @@ public final class ArtifactName {
    * org.kiji.fake._project
    * kiji.something_
    */
-  //Borrowed from Maven source. Only change is that first and last character must be a word char.
-  private static final String ID_REGEX = "\\w[A-Za-z0-9_\\-.]+\\w";
+  // Borrowed from Maven source. Only change is that first and last character must be a word char.
+  private static final String ID_REGEX = "\\w[A-Za-z0-9_\\-.]*\\w";
   private static final Pattern NAME_PATTERN =
       Pattern.compile(ID_REGEX + "\\." + ID_REGEX);
 
@@ -81,8 +81,7 @@ public final class ArtifactName {
     // version=1.0.0
     final int hyphenPosition = name.lastIndexOf("-");
     if (hyphenPosition >= 0) {
-      // TODO: Determine if this is the right version to put in.
-      // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
+      // Parses the version and returns as x.y.z format.
       mVersion = ProtocolVersion.parse(name.substring(hyphenPosition + 1));
       mName = name.substring(0, hyphenPosition);
     } else {
