@@ -54,28 +54,29 @@ public class MavenArtifactName {
    * @param artifactName of the Maven artifact to parse.
    */
   public MavenArtifactName(final ArtifactName artifactName) {
+
+    Preconditions.checkArgument(artifactName.isVersionSpecified(), "Artifact version"
+        + " must be specified.");
     // E.g. org.mycompany.package.artifact-1.0.0 where
     // groupName=org.mycompany.package
     // artifactName=artifact
     // version=1.0.0
-    final String name = artifactName.getFullyQualifiedName();
-    final int hyphenPosition = name.indexOf("-");
-    final String groupAndArtifactName;
-    if (0 < hyphenPosition) {
-      // TODO: Determine if this is the right version to put in.
-      // Maven uses x.y.z-qualifier, whereas ProtocolVersion doesn't support qualifiers.
-      mVersion = ProtocolVersion.parse(name.substring(hyphenPosition + 1));
-      groupAndArtifactName = name.substring(0, hyphenPosition);
-    } else {
-      mVersion = null;
-      groupAndArtifactName = name;
-    }
-    final int lastPeriodPosition = groupAndArtifactName.lastIndexOf(".");
+    final String name = artifactName.getName();
+    mVersion = artifactName.getVersion();
+
+    final int lastPeriodPosition = name.lastIndexOf(".");
+
+    // ArtifactName validates the name during parsing so this should never happen but
+    // better safe than sorry.
     Preconditions.checkArgument(lastPeriodPosition >= 0,
         "Artifact must specify valid group name and artifact name of the form"
             + "<group name>.<artifact name>[-<version>]");
-    mGroupName = groupAndArtifactName.substring(0, lastPeriodPosition);
-    mArtifactName = groupAndArtifactName.substring(lastPeriodPosition + 1);
+
+    mGroupName = name.substring(0, lastPeriodPosition);
+    mArtifactName = name.substring(lastPeriodPosition + 1);
+
+    // Likewise, since the ArtifactName constructor validates the name string, this
+    // should always work but defensive is always good.
     Preconditions.checkArgument(mGroupName.length() > 0, "Group name must be nonempty string.");
     Preconditions.checkArgument(mArtifactName.length() > 0,
         "Artifact name must be nonempty string.");

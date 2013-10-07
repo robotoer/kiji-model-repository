@@ -772,7 +772,7 @@ public final class KijiModelRepository implements Closeable {
       final boolean productionReadyOnly) throws IOException {
     Preconditions.checkArgument(maxVersions >= 0);
 
-    final Set<ModelLifeCycle> setOfModels = Sets.newHashSet();
+    final Set<ModelLifeCycle> setOfModels = Sets.newLinkedHashSet();
     final KijiTableReader reader = mKijiTable.openTableReader();
     final KijiDataRequestBuilder dataRequestBuilder = KijiDataRequest.builder();
     // We want to get every existing model in the table.
