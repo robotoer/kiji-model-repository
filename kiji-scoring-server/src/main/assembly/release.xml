@@ -54,6 +54,13 @@
       <outputDirectory>models</outputDirectory>
       <directory>models</directory>
     </fileSet>
+    <fileSet>
+      <useDefaultExcludes>false</useDefaultExcludes>
+      <outputDirectory>bin</outputDirectory>
+      <directory>src/main/scripts</directory>
+      <fileMode>0755</fileMode>
+      <filtered>true</filtered>
+    </fileSet>
   </fileSets>
   <dependencySets>
     <dependencySet>
