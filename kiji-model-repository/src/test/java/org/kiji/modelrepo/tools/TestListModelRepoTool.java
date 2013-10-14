@@ -204,7 +204,7 @@ public class TestListModelRepoTool extends KijiToolTest {
   public void testShouldListOnlyModelEntryNamesAndVersions() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
-        new String[] {"--kiji=" + mKiji.getURI().toString(), });
+        new String[] { "--kiji=" + mKiji.getURI().toString(), });
     assertEquals(BaseTool.SUCCESS, status);
     // Check 19 lines corresponding to 4 lines per entry * 4 entries + 3 lines for last entry.
     assertEquals(4 * 3 + 2, mToolOutputLines.length);
@@ -216,7 +216,7 @@ public class TestListModelRepoTool extends KijiToolTest {
   public void testShouldListEveryField() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
-        new String[] {"--kiji=" + mKiji.getURI().toString(),
+        new String[] { "--kiji=" + mKiji.getURI().toString(),
             "--definition", "--environment", "--location", "--message", "--production-ready", });
     assertEquals(BaseTool.SUCCESS, status);
     // 8 lines for 3 models, 7 lines for last model and 7 lines for badmodel
@@ -235,7 +235,7 @@ public class TestListModelRepoTool extends KijiToolTest {
   public void testShouldListMessagesAndProductionReadyFlagsSortedByTimestamp() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
-        new String[] {"--kiji=" + mKiji.getURI().toString(),
+        new String[] { "--kiji=" + mKiji.getURI().toString(),
             "--artifact=org.kiji.fake.badmodel",
             "--max-versions=all",
             "--message",
@@ -254,10 +254,32 @@ public class TestListModelRepoTool extends KijiToolTest {
   public void testShouldRetrieveBasedOnLimitedVersions() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
-        new String[] {"--kiji=" + mKiji.getURI().toString(),
+        new String[] { "--kiji=" + mKiji.getURI().toString(),
             "--artifact=org.kiji.fake.badmodel", "--max-versions=3", "--production-ready", });
     assertEquals(BaseTool.SUCCESS, status);
     // 2 lines for artifact/version, and 3 lines for 3 versions of production_ready flag.
     assertEquals(5, mToolOutputLines.length);
+  }
+
+  @Test
+  public void testShouldRetrieveBasedOnVersion() throws Exception {
+    // Run list model repository.
+    final int status = runTool(new ListModelRepoTool(),
+        new String[] { "--kiji=" + mKiji.getURI().toString(),
+            "--artifact=org.kiji.fake.linregscore", "--version=1.0.0", });
+    assertEquals(BaseTool.SUCCESS, status);
+    // 2 lines for artifact/version
+    assertEquals(2, mToolOutputLines.length);
+  }
+
+  @Test
+  public void testShouldFailToRetrieveOnUnknownVersion() throws Exception {
+    // Run list model repository.
+    final int status = runTool(new ListModelRepoTool(),
+        new String[] { "--kiji=" + mKiji.getURI().toString(),
+            "--artifact=org.kiji.fake.linregscore", "--version=2.0.0", });
+    System.out.println(mToolOutputStr);
+    assertEquals(BaseTool.SUCCESS, status);
+    assertEquals(0, mToolOutputStr.length());
   }
 }

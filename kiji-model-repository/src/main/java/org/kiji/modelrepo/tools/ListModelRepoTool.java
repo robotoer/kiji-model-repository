@@ -21,8 +21,6 @@ package org.kiji.modelrepo.tools;
 
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
@@ -41,41 +39,38 @@ import org.kiji.schema.tools.BaseTool;
  */
 public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
-  @Flag(name="kiji", usage="Name of the KIJI instance housing the model repository.")
+  @Flag(name = "kiji", usage = "Name of the KIJI instance housing the model repository.")
   private String mInstanceName = null;
 
   private KijiURI mInstanceURI = null;
 
-  @Flag(name="artifact", usage="Regex pattern for artifact name.")
-  private String mArtifactPattern = "([0-z]|\\.)+";
+  @Flag(name = "artifact", usage = "Artifact to filter for.")
+  private String mArtifactPattern = null;
 
-  private Matcher mArtifactPatternMatcher = null;
+  @Flag(name = "version", usage = "Version to filter for.")
+  private String mVersionPattern = null;
 
-  @Flag(name="version", usage="Regex pattern for version.")
-  private String mVersionPattern = "([0-z]|\\.)+";
-
-  private Matcher mVersionPatternMatcher = null;
-
-  @Flag(name="location", usage="Print the locations of models.")
+  @Flag(name = "location", usage = "Print the locations of models.")
   private boolean mLocation = false;
 
-  @Flag(name="production-ready", usage="Print the production readiness of models.")
+  @Flag(name = "production-ready", usage = "Print the production readiness of models.")
   private boolean mProductionReady = false;
 
-  @Flag(name="production-ready-only", usage="Print only those models which are production ready.")
+  @Flag(name = "production-ready-only",
+      usage = "Print only those models which are production ready.")
   private boolean mProductionReadyOnly = false;
 
-  @Flag(name="message", usage="Print the messages of models.")
+  @Flag(name = "message", usage = "Print the messages of models.")
   private boolean mMessage = false;
 
-  @Flag(name="definition", usage="Print the model definition.")
+  @Flag(name = "definition", usage = "Print the model definition.")
   private boolean mDefinition = false;
 
-  @Flag(name="environment", usage="Print the model environment.")
+  @Flag(name = "environment", usage = "Print the model environment.")
   private boolean mEnvironment = false;
 
-  @Flag(name="max-versions",
-      usage="Max number of versions per cell to display ('all' for all versions). Default is 1.")
+  @Flag(name = "max-versions",
+      usage = "Max number of versions per cell to display ('all' for all versions). Default is 1.")
   private String mMaxVersions = "1";
 
   private int mMaxVersionsInteger;
@@ -98,10 +93,6 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
         getPrintStream().printf("--max-versions must be positive, got '%s'%n", mMaxVersions);
       }
     }
-
-    // Set up artifact and version pattern matchers
-    mArtifactPatternMatcher = Pattern.compile(mArtifactPattern).matcher("");
-    mVersionPatternMatcher = Pattern.compile(mVersionPattern).matcher("");
   }
 
   @Override
@@ -155,7 +146,6 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
     Preconditions.checkArgument(nonFlagArgs.size() == 0,
         "This tool does not accept unnamed arguments: ", nonFlagArgs.toString());
     Preconditions.checkNotNull(mInstanceURI);
-    Preconditions.checkNotNull(mArtifactPatternMatcher);
     Preconditions.checkArgument(mMaxVersionsInteger > 0, "Max versions must be positive.");
 
     // Open model repository table.
@@ -173,11 +163,7 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
 
     // Iterate through list of model row data and appropriately pretty print fields.
     for (final ModelLifeCycle model : setOfModels) {
-      mVersionPatternMatcher.reset(model.getArtifactName().getVersion().toCanonicalString());
-      mArtifactPatternMatcher.reset(model.getArtifactName().getName());
-
-      // If artifact and version regex match, then print the corresponding row.
-      if (mArtifactPatternMatcher.matches() && mVersionPatternMatcher.matches()) {
+      if (isMatch(model)) {
         getPrintStream().println(model.toString());
       }
     }
@@ -185,5 +171,26 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
     modelRepository.close();
     kijiInstance.release();
     return SUCCESS;
+  }
+
+  /**
+   * Determines if a given lifecycle is valid with respect to any conditions placed by the
+   * user when lauching the tool.
+   *
+   * @param lifecycle the lifecycle to determine if it's a match.
+   * @return true if the lifecycle's name and version matches what the user requested. If the user
+   *         did not request any name/version specifics, then it will return true.
+   */
+  private boolean isMatch(ModelLifeCycle lifecycle) {
+    boolean isMatch = true;
+    if (mVersionPattern != null) {
+      isMatch &= lifecycle.getArtifactName().getVersion().toString()
+          .equalsIgnoreCase(mVersionPattern);
+    }
+    if (mArtifactPattern != null) {
+      isMatch &= mArtifactPattern.equalsIgnoreCase(lifecycle.getArtifactName().getName());
+    }
+
+    return isMatch;
   }
 }
