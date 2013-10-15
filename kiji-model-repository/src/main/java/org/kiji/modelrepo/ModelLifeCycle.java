@@ -30,21 +30,27 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
 import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.kiji.express.avro.AvroModelDefinition;
 import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.express.avro.AvroOutputSpec;
 import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
 import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
+import org.kiji.schema.Kiji;
+import org.kiji.schema.KijiColumnName;
 import org.kiji.schema.KijiRowData;
+import org.kiji.schema.KijiURI;
 import org.kiji.schema.util.ProtocolVersion;
+import org.kiji.scoring.KijiFreshnessManager;
+import org.kiji.scoring.lib.server.ScoringServerScoreFunction;
 
 /**
  * Class to work with model artifact metadata sourced from the model repository table.
@@ -67,7 +73,7 @@ public class ModelLifeCycle {
   private final AvroModelDefinition mDefinition;
   private final AvroModelEnvironment mEnvironment;
   private final Map<Long, String> mMessages = Maps.newTreeMap();
-  private final Map<Long, Boolean> mProductionReady = Maps.newTreeMap();
+  private final TreeMap<Long, Boolean> mProductionReady = Maps.newTreeMap();
 
   private final URI mBaseStorageURI;
 
@@ -359,5 +365,68 @@ public class ModelLifeCycle {
     Preconditions.checkArgument(!artifactName.isEmpty(),
         "Artifact name must be nonempty string.");
     return (groupName + "." + artifactName).intern();
+  }
+
+  /**
+   * Attach this model lifecycle as a remote freshener fulfilled by the ScoringServer. Requires that
+   * the model be production ready. Attached to the table and column specified in the model
+   * environment.
+   *
+   * @param kiji the Kiji instance in which the table the Freshener will be attached within lives.
+   * @param policyClass fully qualified class name of the KijiFreshnessPolicy class to use to govern
+   *     Freshening.
+   * @param parameters string-string configuration parameters which will be available to the policy
+   *     and model. The policy may access these via its context objects, the model may use a special
+   *     KeyValueStore. TODO (EXP-240) name this KVStore and make it work.
+   * @param overwriteExisting whether to overwrite an existing attachment to the column specified in
+   *     the model environment.
+   * @param instantiateClasses whether to instantiate the policy and score function classes during
+   *     registration in order to call their serializeToParameters methods.
+   * @param setupClasses whether to setup the policy and score function classes during registration
+   *     before calling their serializeToParameters methods. This may open remote connections for
+   *     KeyValueStores. Context objects fur setup will be created using the other parameters given
+   *     here. This option has no effect if instantiate classes is false.
+   * @throws IOException in case of an error registering the Freshener.
+   */
+  public void attachAsRemoteFreshener(
+      final Kiji kiji,
+      final String policyClass,
+      final Map<String, String> parameters,
+      final boolean overwriteExisting,
+      final boolean instantiateClasses,
+      final boolean setupClasses
+  ) throws IOException {
+    Preconditions.checkState(mProductionReady.lastEntry().getValue(),
+        "Model must be production ready to be attached as a Freshener.");
+    final AvroOutputSpec outputSpec = mEnvironment.getScoreEnvironment().getOutputSpec();
+    final String tableName =
+        KijiURI.newBuilder(outputSpec.getKijiSpecification().getTableUri()).build().getTable();
+    final KijiColumnName columnName =
+        new KijiColumnName(outputSpec.getKijiColumnSpecification().getOutputColumn());
+    final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
+    final Map<String, String> innerParams = Maps.newHashMap(parameters);
+    // TODO eliminate this hard coding.
+    final byte[] baseURLBytes = kiji.getMetaTable().getValue(
+        KijiModelRepository.MODEL_REPO_TABLE_NAME,
+        KijiModelRepository.SCORING_SERVER_URL_METATABLE_KEY);
+    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_PARAMETER_KEY,
+        new String(baseURLBytes));
+    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_MODEL_ID_PARAMETER_KEY,
+        mArtifact.getFullyQualifiedName());
+
+    final KijiFreshnessManager manager = KijiFreshnessManager.create(kiji);
+    try {
+      manager.registerFreshener(
+          tableName,
+          columnName,
+          policyClass,
+          scoreFunctionClass,
+          innerParams,
+          overwriteExisting,
+          instantiateClasses,
+          setupClasses);
+    } finally {
+      manager.close();
+    }
   }
 }

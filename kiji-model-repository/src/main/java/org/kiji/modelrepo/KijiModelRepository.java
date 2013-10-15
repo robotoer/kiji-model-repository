@@ -78,6 +78,10 @@ public final class KijiModelRepository implements Closeable {
   /** The default table name to use for housing model lifecycle metadata information. **/
   public static final String MODEL_REPO_TABLE_NAME = "model_repo";
 
+  /** Meta table key at which the ScoringServer base URL is stored. */
+  public static final String SCORING_SERVER_URL_METATABLE_KEY =
+      "kiji.model.repo.scoring_server_url";
+
   /** The path to the layout for the table in our resources. */
   private static final String TABLE_LAYOUT_BASE_PKG = "/org/kiji/modelrepo/layouts";
 
@@ -685,7 +689,6 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-<<<<<<< HEAD
    * Returns request fields from the model lifecycle from the model repository.
    *
    * @param artifact name of the model lifecycle
@@ -716,8 +719,6 @@ public final class KijiModelRepository implements Closeable {
   }
 
   /**
-=======
->>>>>>> 3fdcb3d... Initial commit of polling for model repo changes.
    * Check that every model in the model repository table is associated with a valid model location
    * in the model repository, i.e. that a valid model artifact is found at the model location.
    *
