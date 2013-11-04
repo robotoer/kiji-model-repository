@@ -190,7 +190,7 @@
     <dependency>
       <groupId>org.kiji.mapreduce</groupId>
       <artifactId>kiji-mapreduce</artifactId>
-      <version>${kiji-mr.version}</version>
+      <version>${kiji-mapreduce.version}</version>
     </dependency>
 
     <!-- Testing Dependencies -->
