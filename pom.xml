@@ -51,7 +51,6 @@
   <modules>
     <module>build-resources</module>
     <module>kiji-model-repository</module>
-    <module>kiji-scoring-server</module>
   </modules>
 
   <dependencies>
