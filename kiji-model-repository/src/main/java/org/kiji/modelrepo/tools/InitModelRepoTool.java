@@ -77,7 +77,8 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
 
   @Override
   protected int run(List<String> nonFlagArgs) throws Exception {
-    Preconditions.checkArgument(nonFlagArgs.size() > 0);
+    Preconditions.checkArgument(nonFlagArgs.size() == 1,
+      "Must pass only a base-uri as a non flag argument.");
     String baseURI = nonFlagArgs.get(0);
     // Simply check that the URI is valid.
     URI parsedURI = URI.create(baseURI);

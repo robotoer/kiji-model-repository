@@ -35,8 +35,8 @@ import org.apache.avro.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.kiji.express.avro.AvroModelDefinition;
-import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modeling.avro.AvroModelDefinition;
+import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.packager.Packager;
 import org.kiji.modelrepo.packager.WarPackager;
 import org.kiji.modelrepo.uploader.ArtifactUploader;

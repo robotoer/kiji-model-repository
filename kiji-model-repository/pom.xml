@@ -90,6 +90,13 @@
     </dependency>
 
     <dependency>
+      <groupId>org.kiji.modeling</groupId>
+      <artifactId>kiji-modeling</artifactId>
+      <version>${kiji-modeling.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
       <groupId>org.kiji.scoring</groupId>
       <artifactId>kiji-scoring</artifactId>
       <version>${kiji-scoring.version}</version>

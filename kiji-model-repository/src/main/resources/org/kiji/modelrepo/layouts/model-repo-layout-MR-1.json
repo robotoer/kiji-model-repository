@@ -53,7 +53,7 @@
         "description" : "Model lifecycle definition configuration.",
         "column_schema" : {
           "type" : "CLASS",
-          "value" : "org.kiji.express.avro.AvroModelDefinition"
+          "value" : "org.kiji.modeling.avro.AvroModelDefinition"
         }
       }, {
         "name" : "environment",
@@ -61,7 +61,7 @@
         "column_schema" : {
           "storage" : "UID",
           "type" : "CLASS",
-          "value" : "org.kiji.express.avro.AvroModelEnvironment"
+          "value" : "org.kiji.modeling.avro.AvroModelEnvironment"
         }
       }, {
         "name" : "location",

@@ -39,9 +39,9 @@ import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.kiji.express.avro.AvroModelDefinition;
-import org.kiji.express.avro.AvroModelEnvironment;
-import org.kiji.express.avro.AvroOutputSpec;
+import org.kiji.modeling.avro.AvroKijiSingleColumnOutputSpec;
+import org.kiji.modeling.avro.AvroModelDefinition;
+import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
 import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
 import org.kiji.schema.Kiji;
@@ -398,11 +398,12 @@ public class ModelLifeCycle {
   ) throws IOException {
     Preconditions.checkState(mProductionReady.lastEntry().getValue(),
         "Model must be production ready to be attached as a Freshener.");
-    final AvroOutputSpec outputSpec = mEnvironment.getScoreEnvironment().getOutputSpec();
+    final AvroKijiSingleColumnOutputSpec outputSpec =
+        mEnvironment.getScoreEnvironment().getOutputSpec();
     final String tableName =
-        KijiURI.newBuilder(outputSpec.getKijiSpecification().getTableUri()).build().getTable();
+        KijiURI.newBuilder(outputSpec.getTableUri()).build().getTable();
     final KijiColumnName columnName =
-        new KijiColumnName(outputSpec.getKijiColumnSpecification().getOutputColumn());
+        new KijiColumnName(outputSpec.getOutputColumn());
     final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
     final Map<String, String> innerParams = Maps.newHashMap(parameters);
     // TODO eliminate this hard coding.

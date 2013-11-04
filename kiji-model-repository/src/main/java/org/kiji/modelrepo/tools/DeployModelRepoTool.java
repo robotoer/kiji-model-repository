@@ -30,8 +30,8 @@ import com.google.common.collect.Lists;
 import org.apache.commons.io.IOUtils;
 
 import org.kiji.common.flags.Flag;
-import org.kiji.express.avro.AvroModelDefinition;
-import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modeling.avro.AvroModelDefinition;
+import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
 import org.kiji.modelrepo.depresolver.DependencyResolver;

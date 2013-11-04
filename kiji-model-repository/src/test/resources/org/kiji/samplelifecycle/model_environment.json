@@ -17,15 +17,15 @@
  * limitations under the License.
  */
 {
-  "protocol_version":"model_environment-0.2.0",
+  "protocol_version":"model_environment-0.3.0",
   "name":"myRunProfile",
   "version":"1.0.0",
   "prepare_environment":{
-    "org.kiji.express.avro.AvroPrepareEnvironment":{
+    "org.kiji.modeling.avro.AvroPrepareEnvironment":{
       "input_spec":{
         "kijitableinput" : {
           "kiji_specification":{
-            "org.kiji.express.avro.AvroKijiInputSpec":{
+            "org.kiji.modeling.avro.AvroKijiInputSpec":{
               "table_uri":"kiji://.env/default/table",
               "data_request":{
                 "min_timestamp":0,
@@ -34,9 +34,9 @@
                   "name":"info:in",
                   "max_versions":3,
                   "filter":{
-                    "org.kiji.express.avro.AvroFilter":{
+                    "org.kiji.modeling.avro.AvroFilter":{
                       "regex_filter":{
-                        "org.kiji.express.avro.AvroRegexQualifierFilter":{
+                        "org.kiji.modeling.avro.AvroRegexQualifierFilter":{
                           "regex":"foo"
                         }
                       }
@@ -55,7 +55,7 @@
       "output_spec":{
         "kijitableoutput" : {
           "kiji_specification":{
-            "org.kiji.express.avro.AvroKijiOutputSpec":{
+            "org.kiji.modeling.avro.AvroKijiOutputSpec":{
               "table_uri":"kiji://myuri",
               "field_bindings":[{
                 "tuple_field_name":"outputtuple",
@@ -76,11 +76,11 @@
     }
   },
   "train_environment":{
-    "org.kiji.express.avro.AvroTrainEnvironment":{
+    "org.kiji.modeling.avro.AvroTrainEnvironment":{
       "input_spec":{
         "kijitableinput" : {
           "kiji_specification":{
-            "org.kiji.express.avro.AvroKijiInputSpec":{
+            "org.kiji.modeling.avro.AvroKijiInputSpec":{
               "table_uri":"kiji://.env/default/table",
               "data_request":{
                 "min_timestamp":0,
@@ -89,9 +89,9 @@
                   "name":"info:in",
                   "max_versions":3,
                   "filter":{
-                    "org.kiji.express.avro.AvroFilter":{
+                    "org.kiji.modeling.avro.AvroFilter":{
                       "regex_filter":{
-                        "org.kiji.express.avro.AvroRegexQualifierFilter":{
+                        "org.kiji.modeling.avro.AvroRegexQualifierFilter":{
                           "regex":"foo"
                         }
                       }
@@ -110,7 +110,7 @@
       "output_spec": {
         "kijitableoutput" : {
           "kiji_specification":{
-            "org.kiji.express.avro.AvroKijiOutputSpec":{
+            "org.kiji.modeling.avro.AvroKijiOutputSpec":{
               "table_uri":"kiji://myuri",
               "field_bindings":[{
                 "tuple_field_name":"outputtuple",
@@ -131,34 +131,30 @@
     }
   },
   "score_environment":{
-    "org.kiji.express.avro.AvroScoreEnvironment":{
+    "org.kiji.modeling.avro.AvroScoreEnvironment":{
       "input_spec":{
-        "kiji_specification":{
-          "org.kiji.express.avro.AvroKijiInputSpec":{
-            "table_uri":"kiji://.env/default/table",
-            "data_request":{
-              "min_timestamp":0,
-              "max_timestamp":38475687,
-              "column_definitions":[{
-                "name":"info:in",
-                "max_versions":3,
-                "filter":{
-                  "org.kiji.express.avro.AvroFilter":{
-                    "regex_filter":{
-                      "org.kiji.express.avro.AvroRegexQualifierFilter":{
-                        "regex":"foo"
-                      }
-                    }
+        "table_uri":"kiji://.env/default/table",
+        "data_request":{
+          "min_timestamp":0,
+          "max_timestamp":38475687,
+          "column_definitions":[{
+            "name":"info:in",
+            "max_versions":3,
+            "filter":{
+              "org.kiji.modeling.avro.AvroFilter":{
+                "regex_filter":{
+                  "org.kiji.modeling.avro.AvroRegexQualifierFilter":{
+                    "regex":"foo"
                   }
                 }
-              }]
-            },
-            "field_bindings":[{
-              "tuple_field_name":"tuplename",
-              "store_field_name":"info:storefieldname"
-            }]
-          }
-        }
+              }
+            }
+          }]
+        },
+        "field_bindings":[{
+          "tuple_field_name":"tuplename",
+          "store_field_name":"info:storefieldname"
+        }]
       },
       "kv_stores":[{
         "store_type":"AVRO_KV",
@@ -169,12 +165,8 @@
         }]
       }],
       "output_spec":{
-        "kiji_column_specification":{
-          "org.kiji.express.avro.AvroKijiSingleColumnOutputSpec":{
-            "table_uri":"kiji://myuri",
-            "output_column":"info:out"
-          }
-        }
+        "table_uri":"kiji://myuri",
+        "output_column":"info:out"
       }
     }
   }

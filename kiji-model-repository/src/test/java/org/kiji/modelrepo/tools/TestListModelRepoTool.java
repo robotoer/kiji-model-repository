@@ -31,8 +31,8 @@ import com.google.common.io.Files;
 import org.junit.Before;
 import org.junit.Test;
 
-import org.kiji.express.avro.AvroModelDefinition;
-import org.kiji.express.avro.AvroModelEnvironment;
+import org.kiji.modeling.avro.AvroModelDefinition;
+import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.KijiModelRepository;
 import org.kiji.modelrepo.ModelLifeCycle;
 import org.kiji.schema.EntityId;
