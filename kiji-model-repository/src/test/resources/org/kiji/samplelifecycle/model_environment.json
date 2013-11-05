@@ -165,7 +165,7 @@
         }]
       }],
       "output_spec":{
-        "table_uri":"kiji://myuri",
+        "table_uri":"kiji://.env/default/table",
         "output_column":"info:out"
       }
     }

@@ -384,7 +384,7 @@ public class ModelLifeCycle {
    *     registration in order to call their serializeToParameters methods.
    * @param setupClasses whether to setup the policy and score function classes during registration
    *     before calling their serializeToParameters methods. This may open remote connections for
-   *     KeyValueStores. Context objects fur setup will be created using the other parameters given
+   *     KeyValueStores. Context objects for setup will be created using the other parameters given
    *     here. This option has no effect if instantiate classes is false.
    * @throws IOException in case of an error registering the Freshener.
    */
@@ -400,10 +400,9 @@ public class ModelLifeCycle {
         "Model must be production ready to be attached as a Freshener.");
     final AvroKijiSingleColumnOutputSpec outputSpec =
         mEnvironment.getScoreEnvironment().getOutputSpec();
-    final String tableName =
-        KijiURI.newBuilder(outputSpec.getTableUri()).build().getTable();
-    final KijiColumnName columnName =
-        new KijiColumnName(outputSpec.getOutputColumn());
+
+    final String tableName = KijiURI.newBuilder(outputSpec.getTableUri()).build().getTable();
+    final KijiColumnName columnName = new KijiColumnName(outputSpec.getOutputColumn());
     final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
     final Map<String, String> innerParams = Maps.newHashMap(parameters);
     // TODO eliminate this hard coding.
