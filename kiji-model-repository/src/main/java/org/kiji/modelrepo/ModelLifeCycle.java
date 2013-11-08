@@ -39,9 +39,11 @@ import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.kiji.modeling.avro.AvroColumnFamilyRequestOutput;
 import org.kiji.modeling.avro.AvroKijiSingleColumnOutputSpec;
 import org.kiji.modeling.avro.AvroModelDefinition;
 import org.kiji.modeling.avro.AvroModelEnvironment;
+import org.kiji.modeling.avro.AvroQualifiedColumnRequestOutput;
 import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
 import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
 import org.kiji.schema.Kiji;
@@ -402,7 +404,20 @@ public class ModelLifeCycle {
         mEnvironment.getScoreEnvironment().getOutputSpec();
 
     final String tableName = KijiURI.newBuilder(outputSpec.getTableUri()).build().getTable();
-    final KijiColumnName columnName = new KijiColumnName(outputSpec.getOutputColumn());
+
+    final KijiColumnName columnName;
+    Object outputColumn = outputSpec.getOutputColumn();
+    if (outputColumn instanceof AvroQualifiedColumnRequestOutput) {
+      String family = ((AvroQualifiedColumnRequestOutput) outputColumn).getFamily();
+      String qualifier = ((AvroQualifiedColumnRequestOutput) outputColumn).getQualifier();
+      columnName = new KijiColumnName(family, qualifier);
+    } else if (outputColumn instanceof AvroColumnFamilyRequestOutput) {
+      String family = ((AvroColumnFamilyRequestOutput) outputColumn).getFamily();
+      columnName = new KijiColumnName(family);
+    } else {
+      throw new IOException("Error getting output column name");
+    }
+
     final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
     final Map<String, String> innerParams = Maps.newHashMap(parameters);
     // TODO eliminate this hard coding.
