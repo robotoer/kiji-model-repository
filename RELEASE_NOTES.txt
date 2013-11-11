@@ -1,5 +1,42 @@
 
                               Kiji Model Repository Release Notes
 
+Version 0.2.0
+  * KIJIREPO-26. Adds scoring server startup scripts.
+  * KIJIREPO-33. Fix some bugs in the parsing of the artifact name.
+  * KIJIREPO-34. Fix broken version of kiji-model-repository module.
+  * KIJIREPO-35. Fix the list tool so that it passes through valid lifecycles.
+  * KIJIREPO-36. Update dependency on scoring to released 0.7.0.
+  * KIJIREPO-37. Develop a tool to attach a freshener to the output column defined in the model
+      environment.
+  * KIJIREPO-8. Implement an API for attaching a freshener to a column which freshens with model
+      in model repo.
+  * SCORE-108. Reconstruct the state of the server from disk.
+  * SCORE-129. Repackage ScoringServer into a submodule of KijiScoring.
+
 Version 0.1.0
-  * Initial code commit.
+  * KIJIREPO-4. Creates a layout for the model repository Kiji table.
+  * KIJIREPO-5. Create an install/init tool.
+  * KIJIREPO-11. Initial commit for the base interface around CLI tools.
+  * KIJIREPO-12. Initial commit of the deploy tool with artifact generation and upload.
+  * KIJIREPO-13. Convert to a multiple module project.
+  * KIJIREPO-14. Fix the problem of subtool flags failing.
+  * KIJIREPO-15. Build an artifact packager given a list of dependencies.
+  * KIJIREPO-16. Interface and implementation around artifact uploading.
+  * KIJIREPO-17. Add dependency resolution interfaces and implementations.
+  * KIJIREPO-18. Create an initial version of a DeployModelRepoTool.
+  * KIJIREPO-19. Add an UpgradeModelRepoTool.
+  * KIJIREPO-20. Adds API and tool to remove a model repository.
+  * KIJIREPO-21. Adds tool to check the consistency of the model repository.
+  * KIJIREPO-22. Ensures safe concurrent model deployment.
+  * KIJIREPO-23. Adds ListModelRepoTool.
+  * KIJIREPO-24. Fix typo in pom that used wrong group/artifact ids.
+  * KIJIREPO-25. Deploys a lifecycle that relies on existing artifact.
+  * KIJIREPO-26. Add an assembly file to package the repository.
+  * KIJIREPO-26. Determine how model-repo artifact itself is packaged.
+  * KIJIREPO-29. Tool to toggle the production_ready flag for an existing model lifecycle.
+  * POM-9. Upgrade to Avro 1.7.5
+  * SCORE-87. Initial scoring server configuration file.
+  * SCORE-89. Scoring server jetty template files for lifecycles.
+  * SCORE-90. Initial commit of the basic Scoring server application.
+  * SCORE-91. Addition of lifecycle scanner to scoring server.
