@@ -42,4 +42,9 @@
     <Class name="org.kiji.modelrepo.tools.UpdateModelRepoTool" />
     <Bug pattern="UWF_NULL_FIELD" />
   </Match>
+
+  <Match>
+    <!-- Bugs in auto-generated Avro sources -->
+    <Class name="~org[.]kiji[.]modelrepo[.]avro[.].*" />
+  </Match>
 </FindBugsFilter>

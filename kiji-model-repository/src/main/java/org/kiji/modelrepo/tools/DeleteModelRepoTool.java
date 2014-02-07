@@ -40,7 +40,7 @@ public final class DeleteModelRepoTool extends BaseTool implements KijiModelRepo
 
   private KijiURI mInstanceURI = null;
 
-  /** The default instance to use for housing the model lifecycle table and meta information. **/
+  /** The default instance to use for housing the model repo table and meta information. **/
   private static final String DEFAULT_INSTANCE_NAME = "kiji://.env/default";
 
   @Override
@@ -77,8 +77,11 @@ public final class DeleteModelRepoTool extends BaseTool implements KijiModelRepo
     Preconditions.checkArgument(nonFlagArgs.size() == 0,
         "This tool does not accept unnamed arguments: ", nonFlagArgs.toString());
     Kiji kijiInstance = Kiji.Factory.open(mInstanceURI);
-    KijiModelRepository.delete(kijiInstance);
-    kijiInstance.release();
+    try {
+      KijiModelRepository.delete(kijiInstance);
+    } finally {
+      kijiInstance.release();
+    }
     return SUCCESS;
   }
 }

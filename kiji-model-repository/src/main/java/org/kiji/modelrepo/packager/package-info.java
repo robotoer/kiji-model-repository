@@ -17,8 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Contains interfaces and implementations around packaging artifacts.
- */
-
+/** Contains interfaces and implementations around packaging artifacts. */
 package org.kiji.modelrepo.packager;

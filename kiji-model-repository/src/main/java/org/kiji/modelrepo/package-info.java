@@ -17,8 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Base package containing model repository classes.
- */
-
+/** Base package containing model repository classes. */
 package org.kiji.modelrepo;

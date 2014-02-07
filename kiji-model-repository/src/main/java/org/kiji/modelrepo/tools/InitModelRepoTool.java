@@ -43,7 +43,7 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
 
   private KijiURI mInstanceURI = null;
 
-  /** The default instance to use for housing the model lifecycle table and meta information. **/
+  /** The default instance to use for housing the model repo table and meta information. **/
   private static final String DEFAULT_INSTANCE_URI = KConstants.DEFAULT_INSTANCE_URI;
 
   @Override

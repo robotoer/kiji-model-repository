@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Define an invocation output handler that writes output to a configurable logger
  * instead of System.out which is the default for the Maven invoker API.
- *
  */
 public class LoggerOutputHandler implements InvocationOutputHandler {
 

@@ -17,8 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Base package containing artifact uploader classes.
- */
-
+/** Base package containing artifact uploader classes. */
 package org.kiji.modelrepo.uploader;

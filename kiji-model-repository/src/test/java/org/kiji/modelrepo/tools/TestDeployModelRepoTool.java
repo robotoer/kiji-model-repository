@@ -24,8 +24,9 @@ import static org.junit.Assert.assertEquals;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -36,17 +37,15 @@ import java.util.jar.JarInputStream;
 
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
-
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import org.kiji.modeling.avro.AvroModelDefinition;
-import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
-import org.kiji.modelrepo.ModelLifeCycle;
+import org.kiji.modelrepo.ModelContainer;
 import org.kiji.modelrepo.TestUtils;
+import org.kiji.modelrepo.avro.KijiModelContainer;
 import org.kiji.schema.EntityId;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiTable;
@@ -71,13 +70,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
   }
 
   private List<String> getBaselineArgs() {
-    return Lists.newArrayList(new String[] {
-        "--definition=src/test/resources/org/kiji/samplelifecycle/model_definition.json"
-        , "--environment=src/test/resources/org/kiji/samplelifecycle/model_environment.json"
-        , "--message=Uploading Artifact"
-        , "--kiji=" + mKiji.getURI().toString()
-        ,
-    });
+    return Lists.newArrayList(
+        "--model-container=src/test/resources/org/kiji/modelrepo/sample/model_container.json",
+        "--message=Uploading Artifact",
+        "--kiji=" + mKiji.getURI().toString()
+    );
   }
 
   private static String makeDependencyString(List<File> inputDeps) {
@@ -113,11 +110,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
 
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
-    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+    ModelContainer model = repo.getModelContainer(
         new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
-    String relativeLocation = lifeCycleRow.getLocation();
+        model.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = model.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
 
@@ -149,11 +146,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+    ModelContainer model = repo.getModelContainer(
         new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
-    String relativeLocation = lifeCycleRow.getLocation();
+        model.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = model.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
 
@@ -167,7 +164,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.LOCATION_KEY, "stuff");
     writer.close();
     table.release();
 
@@ -193,11 +190,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+    ModelContainer model = repo.getModelContainer(
         new ArtifactName(artifactName, ProtocolVersion.parse("1.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
-    String relativeLocation = lifeCycleRow.getLocation();
+        model.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = model.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/1.0.1/sample_model-1.0.1.war",
         relativeLocation);
 
@@ -211,7 +208,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.LOCATION_KEY, "stuff");
     writer.close();
     table.release();
 
@@ -237,11 +234,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+    ModelContainer model = repo.getModelContainer(
         new ArtifactName(artifactName, ProtocolVersion.parse("1.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
-    String relativeLocation = lifeCycleRow.getLocation();
+        model.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = model.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/1.0.1/sample_model-1.0.1.war",
         relativeLocation);
 
@@ -256,8 +253,8 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.UPLOADED_KEY, true);
     writer.close();
     table.release();
 
@@ -327,11 +324,11 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     // Check some attributes of the table.
     KijiModelRepository repo = KijiModelRepository.open(mKiji);
 
-    ModelLifeCycle lifeCycleRow = repo.getModelLifeCycle(
+    ModelContainer model = repo.getModelContainer(
         new ArtifactName(artifactName, ProtocolVersion.parse("0.0.1")));
     Assert.assertEquals("Uploading Artifact",
-        lifeCycleRow.getMessages().entrySet().iterator().next().getValue());
-    String relativeLocation = lifeCycleRow.getLocation();
+        model.getMessages().entrySet().iterator().next().getValue());
+    String relativeLocation = model.getLocation();
     Assert.assertEquals("org/kiji/test/sample_model/0.0.1/sample_model-0.0.1.war",
         relativeLocation);
     repo.close();
@@ -356,8 +353,8 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     KijiTable table = mKiji.openTable(KijiModelRepository.MODEL_REPO_TABLE_NAME);
     KijiTableWriter writer = table.openTableWriter();
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.LOCATION_KEY, "stuff");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.LOCATION_KEY, "stuff");
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.UPLOADED_KEY, true);
     writer.close();
 
     // 2) Setup the new artifact and tool arguments.
@@ -372,9 +369,9 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     int status = runTool(new DeployModelRepoTool(), args.toArray(new String[0]));
     Assert.assertEquals(BaseTool.SUCCESS, status);
     KijiModelRepository modelrepo = KijiModelRepository.open(mKiji);
-    ModelLifeCycle modelOne = modelrepo.getModelLifeCycle(
+    ModelContainer modelOne = modelrepo.getModelContainer(
         new ArtifactName("org.kiji.test.sample_model", ProtocolVersion.parse("1.0.0")));
-    ModelLifeCycle modelTwo = modelrepo.getModelLifeCycle(
+    ModelContainer modelTwo = modelrepo.getModelContainer(
         new ArtifactName("org.kiji.test.sample_model_two", ProtocolVersion.parse("1.0.0")));
     Assert.assertEquals(modelOne.getLocation(), modelTwo.getLocation());
     modelrepo.close();
@@ -408,7 +405,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     EntityId eid = table.getEntityId("org.kiji.test.sample_model", "1.0.0");
     // Missing location.
     // writer.put(eid, ModelArtifact.MODEL_REPO_FAMILY, ModelArtifact.LOCATION_KEY, "stuff");
-    writer.put(eid, ModelLifeCycle.MODEL_REPO_FAMILY, ModelLifeCycle.UPLOADED_KEY, true);
+    writer.put(eid, ModelContainer.MODEL_REPO_FAMILY, ModelContainer.UPLOADED_KEY, true);
     writer.close();
 
     // 2) Setup the new artifact and tool arguments.
@@ -462,7 +459,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
 
     // Deploy threads.
     for (int i = 0; i < NUMBER_OF_DEPLOY_THREADS; i++) {
-      listOfDeployThreads.add(service.submit(new DeployModelLifecycle(modelRepository)));
+      listOfDeployThreads.add(service.submit(new DeployModel(modelRepository)));
     }
 
     int exceptionsCount = 0;
@@ -492,7 +489,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
    * Thread which deploys fake model to ["org.kiji.fake.project", "1.0.0"]
    * in the model repository table.
    */
-  private class DeployModelLifecycle implements Callable<String> {
+  private class DeployModel implements Callable<String> {
     private KijiModelRepository mModelRepository;
 
     /**
@@ -501,7 +498,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
      *
      * @param modelRepository connection to the model repository.
      */
-    public DeployModelLifecycle(final KijiModelRepository modelRepository) {
+    public DeployModel(final KijiModelRepository modelRepository) {
       mModelRepository = modelRepository;
     }
 
@@ -509,7 +506,7 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     @Override
     public String call() {
       try {
-        deployFakeModelLifecycle();
+        deployFakeModel();
       } catch (final Exception e) {
         return e.getMessage();
       }
@@ -517,46 +514,32 @@ public class TestDeployModelRepoTool extends KijiToolTest {
     }
 
     /**
-     * Read fake definition, environment, and deploy fake model.
+     * Read fake model container and deploy fake model.
      *
      * @throws Exception if the fake model could not be deployed to the model repository.
      */
-    public void deployFakeModelLifecycle() throws Exception {
-      // Read AvroModelDefinition
-      final File definitionFile =
-          new File("src/test/resources/org/kiji/samplelifecycle/model_definition.json");
-      final BufferedReader definitionReader = new BufferedReader(new FileReader(definitionFile));
+    public void deployFakeModel() throws Exception {
+      final InputStream inStream = getClass().getClassLoader().getResourceAsStream(
+          "org/kiji/modelrepo/sample/model_container.json");
+      final BufferedReader definitionReader = new BufferedReader(new InputStreamReader(inStream));
       String line;
       String definitionJson = "";
       while ((line = definitionReader.readLine()) != null) {
         definitionJson += line;
       }
       definitionReader.close();
-      final AvroModelDefinition modelDefinition = (AvroModelDefinition)
-          FromJson.fromJsonString(definitionJson, AvroModelDefinition.SCHEMA$);
-
-      // Read AvroModelEnvironment
-      final File environmentFile =
-          new File("src/test/resources/org/kiji/samplelifecycle/model_environment.json");
-      final BufferedReader environmentReader = new BufferedReader(new FileReader(environmentFile));
-      String environmentJson = "";
-      while ((line = environmentReader.readLine()) != null) {
-        environmentJson += line;
-      }
-      environmentReader.close();
-      final AvroModelEnvironment modelEnvironment = (AvroModelEnvironment)
-          FromJson.fromJsonString(environmentJson, AvroModelEnvironment.SCHEMA$);
+      final KijiModelContainer modelContainer = (KijiModelContainer)
+          FromJson.fromJsonString(definitionJson, KijiModelContainer.getClassSchema());
 
       // Create artifactFile
       final File artifactFile = File.createTempFile("artifact", ".jar");
 
-      // Deploy fake mode lifecycle
-      mModelRepository.deployModelLifecycle(
+      // Deploy fake model
+      mModelRepository.deployModelContainer(
           new ArtifactName("org.kiji.fake.project-1.0.0"),
           artifactFile,
           Lists.<File>newArrayList(),
-          modelDefinition,
-          modelEnvironment,
+          modelContainer,
           false,
           "First deployment");
     }

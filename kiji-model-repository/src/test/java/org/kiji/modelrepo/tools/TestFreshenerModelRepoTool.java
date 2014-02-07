@@ -20,11 +20,14 @@ package org.kiji.modelrepo.tools;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.util.List;
 
 import com.google.common.collect.Lists;
@@ -38,6 +41,7 @@ import org.kiji.modelrepo.KijiModelRepository;
 import org.kiji.modelrepo.TestUtils;
 import org.kiji.schema.KijiClientTest;
 import org.kiji.schema.KijiColumnName;
+import org.kiji.schema.KijiURI;
 import org.kiji.schema.layout.KijiTableLayouts;
 import org.kiji.schema.tools.BaseTool;
 import org.kiji.scoring.KijiFreshnessManager;
@@ -80,12 +84,39 @@ public class TestFreshenerModelRepoTool extends KijiClientTest {
 
   //------------------------------------------------------------------------------------------------
 
+  private static final String MODEL_CONTAINER_TEMPLATE = "{"
+      + "\"model_name\": \"name\","
+      + "\"model_version\": \"1.0.0\","
+      + "\"score_function_class\": \"foo.bar.ScoreFn\","
+      + "\"parameters\": {},"
+      + "\"table_uri\": \"%s\","
+      + "\"column_name\": \"%s\","
+      + "\"record_version\": \"model_container-0.1.0\""
+      + "}";
+
+  private File buildModelContainerJson(
+      final String table,
+      final String column
+  ) throws IOException {
+    final String json = String.format(MODEL_CONTAINER_TEMPLATE,
+        KijiURI.newBuilder(getKiji().getURI()).withTableName(table).build(), column);
+    final File tempFile = new File(getLocalTempDir(), "model_container.json");
+    assertTrue(tempFile.createNewFile());
+    final PrintWriter pw = new PrintWriter(new FileWriter(tempFile));
+    try {
+      pw.print(json);
+    } finally {
+      pw.close();
+    }
+    return tempFile;
+  }
+
   private List<String> getBaselineArgs() throws IOException {
+    final File containerFile = buildModelContainerJson("table", "info:out");
     return Lists.newArrayList(
-        "--definition=src/test/resources/org/kiji/samplelifecycle/model_definition.json"
-        , "--environment=src/test/resources/org/kiji/samplelifecycle/model_environment.json"
-        , "--message=Uploading Artifact"
-        , "--kiji=" + getKiji().getURI().toString());
+        "--model-container=" + containerFile.getAbsolutePath(),
+        "--message=Uploading Artifact",
+        "--kiji=" + getKiji().getURI().toString());
   }
 
   private static String makeDependencyString(List<File> inputDeps) {
@@ -97,7 +128,7 @@ public class TestFreshenerModelRepoTool extends KijiClientTest {
     return builder.toString();
   }
 
-  private static final String TABLE_LAYOUT = "org/kiji/model-repository/layouts/table.json";
+  private static final String TABLE_LAYOUT = "org/kiji/modelrepo/layouts/table.json";
 
   @Before
   public void setup() throws Exception {
@@ -114,7 +145,7 @@ public class TestFreshenerModelRepoTool extends KijiClientTest {
     args.add("--deps-resolver=raw");
     args.add("--production-ready");
     args.addAll(getBaselineArgs());
-    runTool(new DeployModelRepoTool(), args.toArray(new String[9]));
+    runTool(new DeployModelRepoTool(), args.toArray(new String[8]));
 
     // Fake the scoring server base URL because it is irrelevant.
     getKiji().getMetaTable().putValue(

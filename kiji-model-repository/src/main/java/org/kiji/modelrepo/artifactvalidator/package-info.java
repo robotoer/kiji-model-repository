@@ -17,7 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Base package containing artifact validator interfaces, implementations and factories.
- */
+/** Base package containing artifact validator interfaces, implementations and factories. */
 package org.kiji.modelrepo.artifactvalidator;

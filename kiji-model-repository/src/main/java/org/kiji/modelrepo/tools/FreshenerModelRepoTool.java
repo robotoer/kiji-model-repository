@@ -28,7 +28,7 @@ import com.google.gson.Gson;
 import org.kiji.common.flags.Flag;
 import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
-import org.kiji.modelrepo.ModelLifeCycle;
+import org.kiji.modelrepo.ModelContainer;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiURI;
 import org.kiji.schema.tools.BaseTool;
@@ -46,7 +46,7 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
   private String mParametersFlag = null;
 
   @Flag(name="overwrite-existing", usage="Specify to overwrite an existing Freshener attached to "
-      + "the output column specified in the model environment. (default=false)")
+      + "the output column specified by the model. (default=false)")
   private Boolean mOverwriteFlag = null;
 
   @Flag(name="instantiate-classes", usage="Specify to instantiate the freshness policy during "
@@ -80,7 +80,7 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
   /** {@inheritDoc} */
   @Override
   public String getCategory() {
-    return "Metadata";
+    return MODEL_REPO_TOOL_CATEGORY;
   }
 
   private static final Gson GSON = new Gson();
@@ -118,7 +118,7 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
       final List<String> nonFlagArgs
   ) {
     Preconditions.checkArgument(3 == nonFlagArgs.size(), "fresh-model has three required positional"
-        + " arguments: <KijiURI of the instance housing the model repo> <model name and value> "
+        + " arguments: <KijiURI of the instance housing the model repo> <model name and version> "
         + "<fully qualified class name of a KijiFreshnessPolicy>");
     mURI = KijiURI.newBuilder(nonFlagArgs.get(0)).build();
     mArtifactName = new ArtifactName(nonFlagArgs.get(1));
@@ -142,11 +142,12 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
         final boolean setup = (null != mSetupFlag) ? mSetupFlag : false;
         final Map<String, String> parameters = (null != mParametersFlag)
             ? mapFromJSON(mParametersFlag) : Collections.<String, String>emptyMap();
-        final ModelLifeCycle lifeCycle = repo.getModelLifeCycle(mArtifactName);
-        lifeCycle.attachAsRemoteFreshener(
+        final ModelContainer model = repo.getModelContainer(mArtifactName);
+        model.attachAsRemoteFreshener(
             kiji, policyClassName, parameters, override, instantiate, setup);
         getPrintStream().printf("Freshener attached to column: %s with policy: %s and model: %s",
-            lifeCycle.getEnvironment().getScoreEnvironment().getOutputSpec().getOutputColumn(),
+            // TODO: ajprax - verify that this column name is correct
+            model.getModelContainer().getColumnName(),
             policyClassName,
             mArtifactName.getFullyQualifiedName());
         return SUCCESS;

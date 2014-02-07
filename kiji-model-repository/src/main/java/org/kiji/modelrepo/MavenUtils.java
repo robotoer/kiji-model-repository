@@ -59,7 +59,7 @@ public final class MavenUtils {
    * if no such location exists.
    *
    * @return the first location (via the PATH variable) of the mvn executable or null if no such
-   *         location exists.
+   *     location exists.
    */
   private static File findMavenHome() {
     final String pathEnv = System.getenv("PATH");

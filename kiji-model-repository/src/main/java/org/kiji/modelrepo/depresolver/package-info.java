@@ -17,8 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Base package containing dependency resolver interfaces, implementations and factories.
- */
-
+/** Base package containing dependency resolver interfaces, implementations and factories. */
 package org.kiji.modelrepo.depresolver;

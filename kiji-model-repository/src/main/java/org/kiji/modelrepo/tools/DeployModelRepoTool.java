@@ -26,14 +26,12 @@ import java.util.List;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-
 import org.apache.commons.io.IOUtils;
 
 import org.kiji.common.flags.Flag;
-import org.kiji.modeling.avro.AvroModelDefinition;
-import org.kiji.modeling.avro.AvroModelEnvironment;
 import org.kiji.modelrepo.ArtifactName;
 import org.kiji.modelrepo.KijiModelRepository;
+import org.kiji.modelrepo.avro.KijiModelContainer;
 import org.kiji.modelrepo.depresolver.DependencyResolver;
 import org.kiji.modelrepo.depresolver.DependencyResolverFactory;
 import org.kiji.schema.KConstants;
@@ -43,7 +41,7 @@ import org.kiji.schema.tools.BaseTool;
 import org.kiji.schema.util.FromJson;
 
 /**
- * The deploy tool uploads the model lifecycle and coordinates to the model repository.
+ * The deploy tool uploads the model and coordinates to the model repository.
  */
 public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -61,13 +59,10 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
   private KijiURI mInstanceURI = null;
 
-  @Flag(name="definition", usage="Path to model definition.")
-  private String mDefinitionFlag = null;
+  @Flag(name="model-container", usage="Path to model definition.")
+  private String mModelContainerFlag = null;
 
-  @Flag(name="environment", usage="Path to model environment.")
-  private String mEnvironmentFlag = null;
-
-  @Flag(name="production-ready", usage="Is the model lifecycle production ready.")
+  @Flag(name="production-ready", usage="Is the model production ready.")
   private boolean mProductionReady = false;
 
   @Flag(name="message", usage="Update message for this deployment.")
@@ -97,7 +92,7 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   /** {@inheritDoc} */
   @Override
   public String getDescription() {
-    return "Upload a new version of a lifecycle and/or code artifact.";
+    return "Upload a new version of a model and/or code artifact.";
   }
 
   /** {@inheritDoc} */
@@ -115,10 +110,8 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   /** {@inheritDoc} */
   @Override
   protected void validateFlags() throws Exception {
-    Preconditions.checkNotNull(mDefinitionFlag,
-        "Specify a model definition with --definition=modeldefinition.json ");
-    Preconditions.checkNotNull(mEnvironmentFlag,
-        "Specify a model environment with --environment=modelenv.json");
+    Preconditions.checkNotNull(mModelContainerFlag,
+        "Specify a model container with --model-container=model.json ");
     Preconditions.checkNotNull(mMessage,
         "Specify an update message for this deployment with --message=updatemessage");
 
@@ -158,25 +151,22 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
     final Kiji kiji = Kiji.Factory.open(mInstanceURI);
     final KijiModelRepository kijiModelRepository = KijiModelRepository.open(kiji);
 
-    final AvroModelDefinition avroModelDefinition = readAvroModelDefinition(mDefinitionFlag);
-    final AvroModelEnvironment avroModelEnvironment = readAvroModelEnvironment(mEnvironmentFlag);
+    final KijiModelContainer modelContainer = readKijiModelContainer(mModelContainerFlag);
 
     try {
       if (mExistingArtifact) {
-        kijiModelRepository.deployModelLifecycle(
+        kijiModelRepository.deployModelContainer(
             mArtifact,
             mSourceArtifact,
-            avroModelDefinition,
-            avroModelEnvironment,
+            modelContainer,
             mProductionReady,
             mMessage);
       } else {
-        kijiModelRepository.deployModelLifecycle(
+        kijiModelRepository.deployModelContainer(
             mArtifact,
             mArtifactPath,
             resolvedDeps,
-            avroModelDefinition,
-            avroModelEnvironment,
+            modelContainer,
             mProductionReady,
             mMessage);
       }
@@ -188,28 +178,16 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   }
 
   /**
-   * Reads an AvroModelDefinition from the specified file.
+   * Reads a KijiModelContainer from the specified file.
    *
-   * @param filename containing the AvroModelDefinition.
-   * @return AvroModelDefinition parsed from the file.
+   * @param filename containing the KijiModelContainer.
+   * @return KijiModelContainer parsed from the file.
    *
-   * @throws IOException if there is an error reading the definition from the specified file.
+   * @throws IOException if there is an error reading the model from the specified file.
    */
-  private static AvroModelDefinition readAvroModelDefinition(String filename) throws IOException {
+  private static KijiModelContainer readKijiModelContainer(String filename) throws IOException {
     String json = readJSONFromFile(filename);
-    return (AvroModelDefinition) FromJson.fromJsonString(json, AvroModelDefinition.SCHEMA$);
-  }
-
-  /**
-   * Reads an AvroModelEnvironment from the specified file.
-   *
-   * @param filename containing the AvroModelEnvironment.
-   * @return AvroModelEnvironment parsed from the file.
-   * @throws IOException if there is an error reading the environment from the specified file.
-   */
-  private static AvroModelEnvironment readAvroModelEnvironment(String filename) throws IOException {
-    String json = readJSONFromFile(filename);
-    return (AvroModelEnvironment) FromJson.fromJsonString(json, AvroModelEnvironment.SCHEMA$);
+    return (KijiModelContainer) FromJson.fromJsonString(json, KijiModelContainer.getClassSchema());
   }
 
   /**
@@ -221,7 +199,7 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
    * @throws IOException if there is a problem reading JSON from the specified file.
    */
   private static String readJSONFromFile(String filename) throws IOException {
-    FileInputStream fis = new FileInputStream(filename);
+    final FileInputStream fis = new FileInputStream(filename);
     return IOUtils.toString(fis);
   }
 }

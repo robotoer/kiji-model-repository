@@ -49,19 +49,11 @@
       "name" : "model",
       "description" : "Generic model metadata.",
       "columns" : [ {
-        "name" : "definition",
-        "description" : "Model lifecycle definition configuration.",
+        "name" : "model_container",
+        "description" : "Model configuration.",
         "column_schema" : {
           "type" : "CLASS",
-          "value" : "org.kiji.modeling.avro.AvroModelDefinition"
-        }
-      }, {
-        "name" : "environment",
-        "description" : "Model lifecycle environment configuration.",
-        "column_schema" : {
-          "storage" : "UID",
-          "type" : "CLASS",
-          "value" : "org.kiji.modeling.avro.AvroModelEnvironment"
+          "value" : "org.kiji.modelrepo.avro.KijiModelContainer"
         }
       }, {
         "name" : "location",

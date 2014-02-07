@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -32,6 +31,7 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
 
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -39,13 +39,9 @@ import org.codehaus.plexus.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.kiji.modeling.avro.AvroColumnFamilyOutputSpec;
-import org.kiji.modeling.avro.AvroKijiSingleColumnOutputSpec;
-import org.kiji.modeling.avro.AvroModelDefinition;
-import org.kiji.modeling.avro.AvroModelEnvironment;
-import org.kiji.modeling.avro.AvroQualifiedColumnOutputSpec;
 import org.kiji.modelrepo.artifactvalidator.ArtifactValidator;
 import org.kiji.modelrepo.artifactvalidator.WarArtifactValidator;
+import org.kiji.modelrepo.avro.KijiModelContainer;
 import org.kiji.schema.Kiji;
 import org.kiji.schema.KijiColumnName;
 import org.kiji.schema.KijiRowData;
@@ -54,43 +50,39 @@ import org.kiji.schema.util.ProtocolVersion;
 import org.kiji.scoring.KijiFreshnessManager;
 import org.kiji.scoring.lib.server.ScoringServerScoreFunction;
 
-/**
- * Class to work with model artifact metadata sourced from the model repository table.
- */
-public class ModelLifeCycle {
+/** Class to work with model artifact metadata sourced from the model repository table. */
+public class ModelContainer {
+  private static final Logger LOG = LoggerFactory.getLogger(ModelContainer.class);
 
-  public static final String DEFINITION_KEY = "definition";
-  public static final String ENVIRONMENT_KEY = "environment";
   public static final String LOCATION_KEY = "location";
   public static final String MESSAGES_KEY = "message";
   public static final String PRODUCTION_READY_KEY = "production_ready";
   public static final String UPLOADED_KEY = "uploaded";
   public static final String MODEL_REPO_FAMILY = "model";
+  public static final String MODEL_CONTAINER_KEY = "model_container";
 
-  private static final Logger LOG = LoggerFactory.getLogger(ModelLifeCycle.class);
-
-  private final boolean mUploaded;
+  private final URI mBaseStorageURI;
+  private final Boolean mUploaded;
   private final ArtifactName mArtifact;
   private final String mLocation;
-  private final AvroModelDefinition mDefinition;
-  private final AvroModelEnvironment mEnvironment;
+  private final KijiModelContainer mModelContainer;
   private final Map<Long, String> mMessages = Maps.newTreeMap();
   private final TreeMap<Long, Boolean> mProductionReady = Maps.newTreeMap();
 
-  private final URI mBaseStorageURI;
-
   /**
-   * Construct model lifecycle object from row data and required fields
-   * from the model repository table. Proper construction of ModelArtifact
-   * requires UPLOADED_KEY field set to true.
+   * Construct a ModelContainer object from row data and required fields from the model repository
+   * table. Proper construction of ModelArtifact requires UPLOADED_KEY field set to true.
    *
    * @param model row data from the model repository table.
    * @param fieldsToRead read only these fields from the row data.
    * @param baseURI is the base URI of the underlying storage layer.
    * @throws IOException if the row data can not be properly accessed to retrieve values.
    */
-  public ModelLifeCycle(final KijiRowData model,
-      final Set<String> fieldsToRead, URI baseURI) throws IOException {
+  public ModelContainer(
+      final KijiRowData model,
+      final Set<String> fieldsToRead,
+      final URI baseURI
+  ) throws IOException {
 
     // Load name and version.
     mArtifact = new ArtifactName(
@@ -98,36 +90,26 @@ public class ModelLifeCycle {
         ProtocolVersion.parse(model.getEntityId().getComponentByIndex(1).toString()));
 
     mBaseStorageURI = baseURI;
-    // Load name, definition, environment, and location.
+    // Load name, KijiModelContainer, and location.
 
     // Every row must have the uploaded field specified and it must be true.
     try {
-      mUploaded = model.<Boolean>getMostRecentValue(MODEL_REPO_FAMILY, UPLOADED_KEY);
+      mUploaded = model.getMostRecentValue(MODEL_REPO_FAMILY, UPLOADED_KEY);
+      Preconditions.checkNotNull(mUploaded);
     } catch (final Exception e) {
       throw new IOException("Requested model could not be extracted.");
     }
     if (!mUploaded) {
       throw new IOException("Requested model was not uploaded, therefore not deployed.");
     }
-    if (fieldsToRead.contains(DEFINITION_KEY)) {
+    if (fieldsToRead.contains(MODEL_CONTAINER_KEY)) {
       try {
-        mDefinition =
-            (AvroModelDefinition) model.getMostRecentValue(MODEL_REPO_FAMILY, DEFINITION_KEY);
+        mModelContainer = model.getMostRecentValue(MODEL_REPO_FAMILY, MODEL_CONTAINER_KEY);
       } catch (final Exception e) {
-        throw new IOException("Following field was not extracted: " + DEFINITION_KEY);
+        throw new IOException("Following field was not extracted: " + MODEL_CONTAINER_KEY);
       }
     } else {
-      mDefinition = null;
-    }
-    if (fieldsToRead.contains(ENVIRONMENT_KEY)) {
-      try {
-        mEnvironment =
-            (AvroModelEnvironment) model.getMostRecentValue(MODEL_REPO_FAMILY, ENVIRONMENT_KEY);
-      } catch (final Exception e) {
-        throw new IOException("Following field was not extracted: " + ENVIRONMENT_KEY);
-      }
-    } else {
-      mEnvironment = null;
+      mModelContainer = null;
     }
     if (fieldsToRead.contains(LOCATION_KEY)) {
       try {
@@ -165,7 +147,7 @@ public class ModelLifeCycle {
   }
 
   /**
-   * Gets lifecycle artifact's name.
+   * Gets model artifact's name.
    *
    * @return artifact name.
    */
@@ -183,25 +165,16 @@ public class ModelLifeCycle {
   }
 
   /**
-   * Gets lifecycle's model definition.
+   * Gets the model container.
    *
-   * @return model definition.
+   * @return model container.
    */
-  public AvroModelDefinition getDefinition() {
-    return mDefinition;
+  public KijiModelContainer getModelContainer() {
+    return mModelContainer;
   }
 
   /**
-   * Gets lifecycle's model environment.
-   *
-   * @return model environment.
-   */
-  public AvroModelEnvironment getEnvironment() {
-    return mEnvironment;
-  }
-
-  /**
-   * Gets a map of the messages associated with this lifecycle, keyed by timestamp.
+   * Gets a map of the messages associated with this model, keyed by timestamp.
    *
    * @return map of messages keyed by timestamp.
    */
@@ -210,7 +183,7 @@ public class ModelLifeCycle {
   }
 
   /**
-   * Gets a map of the production_ready flags associated with this lifecycle, keyed by timestamp.
+   * Gets a map of the production_ready flags associated with this model, keyed by timestamp.
    *
    * @return map of production_ready flags keyed by timestamp.
    */
@@ -220,61 +193,18 @@ public class ModelLifeCycle {
 
   @Override
   public String toString() {
-    final StringBuilder modelStringBuilder = new StringBuilder();
-    modelStringBuilder.append(String.format("name: %s%n", mArtifact.getName()));
-    modelStringBuilder.append(String.format("version: %s%n", mArtifact.getVersion()));
-
-    // Print the fields which were requested by the user.
-    if (null != getLocation()) {
-      modelStringBuilder.append(String.format("%s: %s%n", "location", getLocation()));
-    }
-    if (null != getDefinition()) {
-      modelStringBuilder.append(String.format("%s: %s%n", "definition", getDefinition()));
-    }
-    if (null != getEnvironment()) {
-      modelStringBuilder.append(String.format("%s: %s%n", "environment", getEnvironment()));
-    }
-
-    // Merge the sorted lists of production_ready and message flags and pretty print.
-    final Iterator<Entry<Long, Boolean>> productionReady =
-        getProductionReady().entrySet().iterator();
-    final Iterator<Entry<Long, String>> messages = getMessages().entrySet().iterator();
-    Map.Entry<Long, Boolean> productionReadyEntry = null;
-    Map.Entry<Long, String> messagesEntry = null;
-    if (productionReady.hasNext()) {
-      productionReadyEntry = productionReady.next();
-    }
-    if (messages.hasNext()) {
-      messagesEntry = messages.next();
-    }
-    while (null != productionReadyEntry || null != messagesEntry) {
-      if ((null == productionReadyEntry)
-          || ((null != messagesEntry)
-          && (productionReadyEntry.getKey().compareTo(messagesEntry.getKey()) >= 0))) {
-        modelStringBuilder.append(String.format("%s [%d]: %s%n", "message",
-            messagesEntry.getKey(),
-            messagesEntry.getValue()));
-        if (messages.hasNext()) {
-          messagesEntry = messages.next();
-        } else {
-          messagesEntry = null;
-        }
-      } else {
-        modelStringBuilder.append(String.format("%s [%d]: %s%n", "production_ready",
-            productionReadyEntry.getKey(),
-            productionReadyEntry.getValue()));
-        if (productionReady.hasNext()) {
-          productionReadyEntry = productionReady.next();
-        } else {
-          productionReadyEntry = null;
-        }
-      }
-    }
-    return modelStringBuilder.toString();
+    return Objects.toStringHelper(ModelContainer.class)
+        .add("name", mArtifact.getName())
+        .add("version", mArtifact.getVersion())
+        .add("location", getLocation())
+        .add("model_container", getModelContainer())
+        .add("messages", getMessages())
+        .add("production_ready_history", getProductionReady())
+        .toString();
   }
 
   /**
-   * Check that this model lifecycle is associated with a valid model location
+   * Check that this model is associated with a valid model location
    * in the model repository, i.e. that a valid model artifact is found at the model location.
    *
    * @param download set to true allows the method to download and validate the artifact file.
@@ -283,7 +213,8 @@ public class ModelLifeCycle {
    * @throws IOException if a temporary file can not be allocated for downloading model artifacts.
    */
   public List<Exception> checkModelLocation(
-      final boolean download) throws IOException {
+      final boolean download
+  ) throws IOException {
     final List<Exception> issues = Lists.newArrayList();
     final URL location = mBaseStorageURI.resolve(this.getLocation()).toURL();
     // Currently only supports http and fs.
@@ -335,7 +266,9 @@ public class ModelLifeCycle {
    * @return true iff copy happen unexceptionally
    * @throws IOException if there is a problem downloading the file.
    */
-  public boolean downloadArtifact(final File file) throws IOException {
+  public boolean downloadArtifact(
+      final File file
+  ) throws IOException {
     final URI resolvedURI = URI.create(mBaseStorageURI.toString() + "/"
         + mLocation);
     final URL location = resolvedURI.toURL();
@@ -351,35 +284,37 @@ public class ModelLifeCycle {
   }
 
   /**
-   * Returns the canonical name of a model life cycle given the group and artifact name. This
+   * Returns the canonical name of a model given the group and artifact name. This
    * is here as the layout supports a single name field but other parts of the system support
    * the separate group/artifact names.
    *
-   * @param groupName the group name of the lifecycle.
-   * @param artifactName the artifact name of the lifecycle.
-   * @return the canonical name of the model lifecycle suitable for storage in the Kiji table
-   *         storing deployed lifecycles.
+   * @param groupName the group name of the model.
+   * @param artifactName the artifact name of the model.
+   * @return the canonical name of the model suitable for storage in the Kiji table storing deployed
+   *     models.
    */
-  public static String getModelName(String groupName, String artifactName) {
+  public static String getModelName(
+      final String groupName,
+      final String artifactName
+  ) {
     Preconditions.checkNotNull(groupName);
     Preconditions.checkNotNull(artifactName);
     Preconditions.checkArgument(!groupName.isEmpty(), "Group name must be nonempty string.");
     Preconditions.checkArgument(!artifactName.isEmpty(),
         "Artifact name must be nonempty string.");
-    return (groupName + "." + artifactName).intern();
+    return (groupName + "." + artifactName);
   }
 
   /**
-   * Attach this model lifecycle as a remote freshener fulfilled by the ScoringServer. Requires that
+   * Attach this model as a remote freshener fulfilled by the ScoringServer. Requires that
    * the model be production ready. Attached to the table and column specified in the model
-   * environment.
+   * container.
    *
    * @param kiji the Kiji instance in which the table the Freshener will be attached within lives.
    * @param policyClass fully qualified class name of the KijiFreshnessPolicy class to use to govern
    *     Freshening.
    * @param parameters string-string configuration parameters which will be available to the policy
-   *     and model. The policy may access these via its context objects, the model may use a special
-   *     KeyValueStore. TODO (EXP-240) name this KVStore and make it work.
+   *     and model via their FreshenerContext objects.
    * @param overwriteExisting whether to overwrite an existing attachment to the column specified in
    *     the model environment.
    * @param instantiateClasses whether to instantiate the policy and score function classes during
@@ -400,27 +335,13 @@ public class ModelLifeCycle {
   ) throws IOException {
     Preconditions.checkState(mProductionReady.lastEntry().getValue(),
         "Model must be production ready to be attached as a Freshener.");
-    final AvroKijiSingleColumnOutputSpec outputSpec =
-        mEnvironment.getScoreEnvironment().getOutputSpec();
 
-    final String tableName = KijiURI.newBuilder(outputSpec.getTableUri()).build().getTable();
+    final String tableName = KijiURI.newBuilder(mModelContainer.getTableUri()).build().getTable();
 
-    final KijiColumnName columnName;
-    Object outputColumn = outputSpec.getOutputColumn();
-    if (outputColumn instanceof AvroQualifiedColumnOutputSpec) {
-      String family = ((AvroQualifiedColumnOutputSpec) outputColumn).getFamily();
-      String qualifier = ((AvroQualifiedColumnOutputSpec) outputColumn).getQualifier();
-      columnName = new KijiColumnName(family, qualifier);
-    } else if (outputColumn instanceof AvroColumnFamilyOutputSpec) {
-      String family = ((AvroColumnFamilyOutputSpec) outputColumn).getFamily();
-      columnName = new KijiColumnName(family);
-    } else {
-      throw new IOException("Error getting output column name");
-    }
+    final KijiColumnName columnName = new KijiColumnName(mModelContainer.getColumnName());
 
     final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
     final Map<String, String> innerParams = Maps.newHashMap(parameters);
-    // TODO eliminate this hard coding.
     final byte[] baseURLBytes = kiji.getMetaTable().getValue(
         KijiModelRepository.MODEL_REPO_TABLE_NAME,
         KijiModelRepository.SCORING_SERVER_URL_METATABLE_KEY);

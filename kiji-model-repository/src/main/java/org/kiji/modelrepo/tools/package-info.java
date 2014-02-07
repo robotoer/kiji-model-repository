@@ -17,8 +17,5 @@
  * limitations under the License.
  */
 
-/**
- * Implementations of the model repository CLI tools.
- */
-
+/** Implementations of the model repository CLI tools. */
 package org.kiji.modelrepo.tools;
