@@ -33,6 +33,17 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Model repository consistency check tool checks that every model in the model repository table
  * is associated with a valid artifact (a jar/war file) in the model repository.
+ *
+ * Validate the model repository in a Kiji instance and download/validate each remote artifact:
+ * <pre>
+ *   kiji model-repo check --kiji=kiji://.env/default
+ * </pre>
+ *
+ * Validate the model repository in a Kiji instance,
+ * but do not download/validate each remote artifact:
+ * <pre>
+ *   kiji model-repo check --kiji=kiji://.env/default --download-and-validate-artifact=false
+ * </pre>
  */
 public final class CheckModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -67,6 +78,23 @@ public final class CheckModelRepoTool extends BaseTool implements KijiModelRepoT
   @Override
   public String getModelRepoToolName() {
     return "check";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo check --kiji=<kiji-uri> [--download-and-validate-artifact=false]\n"
+        + "\n"
+        + "Example:\n"
+        + "  Validate the model repository in a Kiji instance "
+        + "and download/validate each remote artifact:\n"
+        + "    kiji model-repo check --kiji=kiji://.env/default\n"
+        + "\n"
+        + "  Validate the model repository in a Kiji instance,"
+        + "but do not download/validate each remote artifact:\n"
+        + "    kiji model-repo check --kiji=kiji://.env/default "
+        + "--download-and-validate-artifact=false\n";
   }
 
   @Override

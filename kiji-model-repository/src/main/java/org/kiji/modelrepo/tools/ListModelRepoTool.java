@@ -36,6 +36,23 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Implementation of the model repository list tool.
  * This will scan model repository table and list all requested fields.
+ *
+ * List all models' locations, production-readiness flags, messages, and model containers:
+ * <pre>
+ *   kiji model-repo list --kiji=kiji://.env/default --location --production-ready --message
+ *       --model-container --max-versions=all
+ * </pre>
+ *
+ * List only the latest production ready models:
+ * <pre>
+ *   kiji model-repo list --kiji=kiji://.env/default --production-ready-only
+ * </pre>
+ *
+ * List only latest models matching specified name or version:
+ * <pre>
+ *   kiji model-repo list --kiji=kiji://.env/default --artifact=org.kiji.test.model
+ *   kiji model-repo list --kiji=kiji://.env/default --artifact=org.kiji.test.model --version=1.0.1
+ * </pre>
  */
 public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -110,6 +127,29 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
   @Override
   public String getDescription() {
     return "Lists models in model repository.";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo list --kiji=<kiji-uri> "
+        + "[name filter flags: --artifact=<artifact name> --version=<artifact version>] "
+        + "[feature flags: --location --message --production-ready --model-container] "
+        + "[other filter flags: --production-ready --max-versions=...]\n"
+        + "\n"
+        + "Example:\n"
+        + "  List all models' locations, production-readiness flags, messages, and containers:\n"
+        + "    kiji model-repo list --kiji=kiji://.env/default --location "
+        + "--production-ready --message  --model-container --max-versions=all\n"
+        + "\n"
+        + "  List only the latest production ready models:\n"
+        + "    kiji model-repo list --kiji=kiji://.env/default --production-ready-only\n"
+        + "\n"
+        + "  List only latest models matching specified name or version:\n"
+        + "    kiji model-repo list --kiji=kiji://.env/default --artifact=org.kiji.test.model\n"
+        + "    kiji model-repo list --kiji=kiji://.env/default --artifact=org.kiji.test.model "
+        + "--version=1.0.1\n";
   }
 
   /**

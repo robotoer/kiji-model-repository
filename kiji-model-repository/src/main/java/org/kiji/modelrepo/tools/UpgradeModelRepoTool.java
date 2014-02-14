@@ -34,6 +34,11 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Implementation of the model repository upgrade tool. This will upgrade the model repository
  * to the latest version.
+ *
+ * Update the model repository in an instance:
+ * <pre>
+ *   kiji model-repo upgrade --kiji=kiji://.env/default
+ * </pre>
  */
 public final class UpgradeModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -72,6 +77,17 @@ public final class UpgradeModelRepoTool extends BaseTool implements KijiModelRep
   @Override
   public String getDescription() {
     return "Upgrades a new model repository.";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo upgrade --kiji=<kiji-uri>\n"
+        + "\n"
+        + "Example:\n"
+        + "  Update the model repository in an instance:\n"
+        + "    kiji model-repo update --kiji=kiji://.env/default\n";
   }
 
   @Override

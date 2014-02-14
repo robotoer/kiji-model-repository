@@ -36,6 +36,32 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Tool for attaching models stored in the model repository as Fresheners fulfilled by the Kiji
  * ScoringServer.
+ *
+ * Attach freshener model:
+ * <pre>
+ *   kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model \
+ *       org.kiji.test.fresh_model.AlwaysFreshen
+ *   kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model \
+ *       org.kiji.test.fresh_model.AlwaysFreshen --parameters='{"param1":"value",...}'
+ * </pre>
+ *
+ * Overwrite existing freshener attached to output column:
+ * <pre>
+ *   kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model \
+ *       org.kiji.test.fresh_model.AlwaysFreshen --overwrite-existing
+ * </pre>
+ *
+ * Instantiate freshness policy on registration to include serializeToParameters in parameters:
+ * <pre>
+ *   kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model \
+ *       org.kiji.test.fresh_model.AlwaysFreshen --instantiate-classes
+ * </pre>
+ *
+ * Instantiate freshness policy on registration and call setup method before serializeToParameters:
+ * <pre>
+ *   kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model \
+ *       org.kiji.test.fresh_model.AlwaysFreshen --instantiate-classes --setup-classes
+ * </pre>
  */
 public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -68,13 +94,42 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
   /** {@inheritDoc} */
   @Override
   public String getModelRepoToolName() {
-    return "fresh";
+    return "fresh-model";
   }
 
   /** {@inheritDoc} */
   @Override
   public String getDescription() {
     return "Attach models as KijiScoring Fresheners.";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo fresh-model <kiji-uri> <model-artifact name> "
+        + "<fully specified freshness policy> [flags...]\n"
+        + "\n"
+        + "Example:\n"
+        + "  Attach freshener model:\n"
+        + "    kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model "
+        + "org.kiji.test.fresh_model.AlwaysFreshen\n"
+        + "    kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model "
+        + "org.kiji.test.fresh_model.AlwaysFreshen --parameters='{\"param1\":\"value\",...}'\n"
+        + "\n"
+        + "  Overwrite existing freshener attached to output column:\n"
+        + "    kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model "
+        + "org.kiji.test.fresh_model.AlwaysFreshen --overwrite-existing\n"
+        + "\n"
+        + "  Instantiate freshness policy on registration to include serializeToParameters "
+        + "in parameters:\n"
+        + "    kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model "
+        + "org.kiji.test.fresh_model.AlwaysFreshen --instantiate-classes\n"
+        + "\n"
+        + "  Instantiate freshness policy on registration and call setup method before "
+        + "serializeToParameters:\n"
+        + "    kiji model-repo fresh-model kiji://.env/default org.kiji.test.fresh_model "
+        + "org.kiji.test.fresh_model.AlwaysFreshen --instantiate-classes --setup-classes\n";
   }
 
   /** {@inheritDoc} */

@@ -32,6 +32,11 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Implementation of the model repository uninstallation tool. This will remove an existing model
  * repository table in the specified instance.
+ *
+ * Delete the model repository in an instance:
+ * <pre>
+ *   kiji model-repo delete --kiji=kiji://.env/default
+ * </pre>
  */
 public final class DeleteModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -50,6 +55,17 @@ public final class DeleteModelRepoTool extends BaseTool implements KijiModelRepo
       mInstanceName = DEFAULT_INSTANCE_NAME;
     }
     mInstanceURI = KijiURI.newBuilder(mInstanceName).build();
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo delete --kiji=<kiji-uri>\n"
+        + "\n"
+        + "Example:\n"
+        + "  Delete the model repository in an instance:\n"
+        + "    kiji model-repo delete --kiji=kiji://.env/default\n";
   }
 
   @Override

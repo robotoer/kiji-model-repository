@@ -35,6 +35,10 @@ import org.kiji.schema.tools.BaseTool;
  * Implementation of the model repository installation tool. This will create a new model
  * repository table in the specified instance.
  *
+ * Initialize model repo in specified instance:
+ * <pre>
+ *   kiji model-repo init --kiji=kiji://.env/default
+ * </pre>
  */
 public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -73,6 +77,17 @@ public final class InitModelRepoTool extends BaseTool implements KijiModelRepoTo
   @Override
   public String getDescription() {
     return "Creates a new model repository.";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo init --kiji=<kiji-uri>\n"
+        + "\n"
+        + "Example:\n"
+        + "  Initialize model repo in specified instance:\n"
+        + "    kiji model-repo init --kiji=kiji://.env/default\n";
   }
 
   @Override

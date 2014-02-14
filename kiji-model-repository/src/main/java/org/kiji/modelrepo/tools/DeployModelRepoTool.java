@@ -42,6 +42,33 @@ import org.kiji.schema.util.FromJson;
 
 /**
  * The deploy tool uploads the model and coordinates to the model repository.
+ *
+ * Deploy model from jar/war artifact:
+ * <pre>
+ *   kiji model-repo deploy org.kiji.test.sample_model sample_model.jar \
+ *       --model-container=model.json --kiji=kiji://.env/default \
+ *       --production-ready --message="Production ready model." # Get version automatically.
+ *   kiji model-repo deploy org.kiji.test.sample_model-1.2.1 sample_model.jar \
+ *       --model-container=model.json --kiji=kiji://.env/default
+ * </pre>
+ *
+ * Deploy model with dependencies:
+ * <pre>
+ *   kiji model-repo deploy org.kiji.test.sample_model sample_model.jar \
+ *       --model-container=model.json --kiji=kiji://.env/default \
+ *       --deps=dep1.jar:dep2.jar --dep-resolver=raw # When dependencies are files.
+ *   kiji model-repo deploy org.kiji.test.sample_model sample_model.jar \
+ *       --model-container=model.json --kiji=kiji://.env/default \
+ *       --deps=path/to/pom.xml --dep-resolver=maven # Read pom.xml to resolve dependencies.
+ *   kiji model-repo deploy org.kiji.test.sample_model sample_model.jar \
+ *       --model-container=model.json --kiji=kiji://.env/default
+ * </pre>
+ *
+ * Deploy model using existing model's artifact:
+ * <pre>
+ *   kiji model-repo deploy org.kiji.test.model org.kiji.test.existing_model --existing-artifact \
+ *       --model-container=model.json --kiji=kiji://.env/default
+ * </pre>
  */
 public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -99,6 +126,38 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   @Override
   public String getName() {
     return MODEL_REPO_TOOL_BASE + getModelRepoToolName();
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo deploy --kiji=<kiji-uri> <model-artifact name> [flags...] \n"
+        + "\n"
+        + "Example:\n"
+        + "  Deploy model from jar/war artifact:\n"
+        + "    kiji model-repo deploy org.kiji.test.sample_model sample_model.jar "
+        + "--model-container=model.json --kiji=kiji://.env/default "
+        + "--production-ready --message=\"Production ready model.\""
+        + "# Get version automatically.\n"
+        + "    kiji model-repo deploy org.kiji.test.sample_model-1.2.1 sample_model.jar "
+        + "--model-container=model.json --kiji=kiji://.env/default\n"
+        + "\n"
+        + "  Deploy model with dependencies:\n"
+        + "    kiji model-repo deploy org.kiji.test.sample_model sample_model.jar "
+        + "--model-container=model.json --kiji=kiji://.env/default "
+        + "--deps=dep1.jar:dep2.jar --dep-resolver=raw "
+        + "# When dependencies are files.\n"
+        + "    kiji model-repo deploy org.kiji.test.sample_model sample_model.jar "
+        + "--model-container=model.json --kiji=kiji://.env/default "
+        + "--deps=path/to/pom.xml --dep-resolver=maven  "
+        + "# Read pom.xml to resolve dependencies.\n"
+        + "    kiji model-repo deploy org.kiji.test.sample_model sample_model.jar "
+        + "--model-container=model.json --kiji=kiji://.env/default\n"
+        + "\n"
+        + "  Deploy model using existing model's artifact:\n"
+        + "    kiji model-repo deploy org.kiji.test.model org.kiji.test.existing_model "
+        + "--existing-artifact --model-container=model.json --kiji=kiji://.env/default\n";
   }
 
   /** {@inheritDoc} */

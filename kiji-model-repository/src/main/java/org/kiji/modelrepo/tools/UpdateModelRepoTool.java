@@ -36,6 +36,12 @@ import org.kiji.schema.tools.BaseTool;
 /**
  * Model repository consistency update tool set the production ready flag
  * and annotate models with messages.
+ *
+ * Update production readiness and optional message:
+ * <pre>
+ *   kiji model-repo update --kiji=kiji://.env/default --production-ready
+ *       --message="Model has been marked as production ready."
+ * </pre>
  */
 public final class UpdateModelRepoTool extends BaseTool implements KijiModelRepoTool {
 
@@ -77,6 +83,18 @@ public final class UpdateModelRepoTool extends BaseTool implements KijiModelRepo
   @Override
   public String getDescription() {
     return "Updates the production ready flag and sets message for models in the model repository.";
+  }
+
+  @Override
+  public String getUsageString() {
+    return
+        "Usage:\n"
+        + "    kiji model-repo update --kiji=<kiji-uri> --production-ready [--message=\"...\"]\n"
+        + "\n"
+        + "Example:\n"
+        + "  Update production readiness and optional message:\n"
+        + "    kiji model-repo update --kiji=kiji://.env/default --production-ready "
+        + "--message=\"Model has been marked as production ready.\"\n";
   }
 
   @Override
