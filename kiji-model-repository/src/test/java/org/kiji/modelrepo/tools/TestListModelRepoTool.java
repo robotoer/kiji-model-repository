@@ -171,7 +171,7 @@ public class TestListModelRepoTool extends KijiToolTest {
   }
 
   @Test
-  public void testShouldListOnlyModelEntryNamesAndVersions() throws Exception {
+  public void testShouldListEveryFieldByDefault() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
         "--kiji=" + mKiji.getURI().toString());
@@ -180,10 +180,15 @@ public class TestListModelRepoTool extends KijiToolTest {
     assertEquals(5, mToolOutputLines.length);
     // Even includes the "badmodel" artifact which had only a model definition and location.
     assertTrue(mToolOutputStr.contains("badmodel"));
+    // Includes all the field names appropriate number of times.
+    assertEquals(6, mToolOutputStr.split("model_container=").length);
+    assertEquals(6, mToolOutputStr.split("location=").length);
+    assertEquals(6, mToolOutputStr.split("messages=").length);
+    assertEquals(6, mToolOutputStr.split("production_ready_history=").length);
   }
 
   @Test
-  public void testShouldListEveryField() throws Exception {
+  public void testShouldListEveryFieldAsRequestedFromCommandLine() throws Exception {
     // Run list model repository.
     final int status = runTool(new ListModelRepoTool(),
         "--kiji=" + mKiji.getURI().toString(),

@@ -171,6 +171,12 @@ public final class ListModelRepoTool extends BaseTool implements KijiModelRepoTo
     if (mMessage) {
       fieldsToPrint.add(ModelContainer.MESSAGES_KEY);
     }
+    if (fieldsToPrint.isEmpty()) {
+      fieldsToPrint.add(ModelContainer.LOCATION_KEY);
+      fieldsToPrint.add(ModelContainer.MODEL_CONTAINER_KEY);
+      fieldsToPrint.add(ModelContainer.PRODUCTION_READY_KEY);
+      fieldsToPrint.add(ModelContainer.MESSAGES_KEY);
+    }
     return fieldsToPrint;
   }
 
