@@ -345,8 +345,8 @@ public class ModelContainer {
     final byte[] baseURLBytes = kiji.getMetaTable().getValue(
         KijiModelRepository.MODEL_REPO_TABLE_NAME,
         KijiModelRepository.SCORING_SERVER_URL_METATABLE_KEY);
-    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_PARAMETER_KEY,
-        new String(baseURLBytes));
+    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY,
+        new String(baseURLBytes, "UTF-8"));
     innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_MODEL_ID_PARAMETER_KEY,
         mArtifact.getFullyQualifiedName());
 
