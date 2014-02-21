@@ -326,7 +326,6 @@ public class ModelContainer {
    * @throws IOException in case of an error registering the Freshener.
    */
   public void attachAsRemoteFreshener(
-      final Kiji kiji,
       final String policyClass,
       final Map<String, String> parameters,
       final boolean overwriteExisting,
@@ -335,34 +334,42 @@ public class ModelContainer {
   ) throws IOException {
     Preconditions.checkState(mProductionReady.lastEntry().getValue(),
         "Model must be production ready to be attached as a Freshener.");
-
-    final String tableName = KijiURI.newBuilder(mModelContainer.getTableUri()).build().getTable();
-
-    final KijiColumnName columnName = new KijiColumnName(mModelContainer.getColumnName());
-
-    final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
-    final Map<String, String> innerParams = Maps.newHashMap(parameters);
-    final byte[] baseURLBytes = kiji.getMetaTable().getValue(
-        KijiModelRepository.MODEL_REPO_TABLE_NAME,
-        KijiModelRepository.SCORING_SERVER_URL_METATABLE_KEY);
-    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY,
-        new String(baseURLBytes, "UTF-8"));
-    innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_MODEL_ID_PARAMETER_KEY,
-        mArtifact.getFullyQualifiedName());
-
-    final KijiFreshnessManager manager = KijiFreshnessManager.create(kiji);
+    final KijiURI tableUri = KijiURI.newBuilder(mModelContainer.getTableUri()).build();
+    final Kiji kiji = Kiji.Factory.open(tableUri);
     try {
-      manager.registerFreshener(
-          tableName,
-          columnName,
-          policyClass,
-          scoreFunctionClass,
-          innerParams,
-          overwriteExisting,
-          instantiateClasses,
-          setupClasses);
+      Preconditions.checkState(null != kiji.getSystemTable()
+          .getValue(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY),
+          "Scoring server base URL is not set, remote fresheners will not function. Set base URL in "
+              + "the Kiji system table under key: "
+              + ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY);
+
+      final String tableName = tableUri.getTable();
+      final KijiColumnName columnName = new KijiColumnName(mModelContainer.getColumnName());
+
+      final String scoreFunctionClass = ScoringServerScoreFunction.class.getName();
+      final Map<String, String> innerParams = Maps.newHashMap(mModelContainer.getParameters());
+      innerParams.putAll(parameters);
+      innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_MODEL_ID_PARAMETER_KEY,
+          mArtifact.getFullyQualifiedName());
+      innerParams.put(ScoringServerScoreFunction.SCORING_SERVER_INSTANCE_URI_PARAMETER_KEY,
+          kiji.getURI().toString());
+
+      final KijiFreshnessManager manager = KijiFreshnessManager.create(kiji);
+      try {
+        manager.registerFreshener(
+            tableName,
+            columnName,
+            policyClass,
+            scoreFunctionClass,
+            innerParams,
+            overwriteExisting,
+            instantiateClasses,
+            setupClasses);
+      } finally {
+        manager.close();
+      }
     } finally {
-      manager.close();
+      kiji.release();
     }
   }
 }

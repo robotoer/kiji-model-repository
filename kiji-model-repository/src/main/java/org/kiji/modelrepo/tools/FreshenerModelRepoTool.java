@@ -199,7 +199,7 @@ public class FreshenerModelRepoTool extends BaseTool implements KijiModelRepoToo
             ? mapFromJSON(mParametersFlag) : Collections.<String, String>emptyMap();
         final ModelContainer model = repo.getModelContainer(mArtifactName);
         model.attachAsRemoteFreshener(
-            kiji, policyClassName, parameters, override, instantiate, setup);
+            policyClassName, parameters, override, instantiate, setup);
         getPrintStream().printf("Freshener attached to column: %s with policy: %s and model: %s",
             // TODO: ajprax - verify that this column name is correct
             model.getModelContainer().getColumnName(),

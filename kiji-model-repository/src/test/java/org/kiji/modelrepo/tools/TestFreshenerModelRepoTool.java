@@ -45,6 +45,7 @@ import org.kiji.schema.KijiURI;
 import org.kiji.schema.layout.KijiTableLayouts;
 import org.kiji.schema.tools.BaseTool;
 import org.kiji.scoring.KijiFreshnessManager;
+import org.kiji.scoring.lib.server.ScoringServerScoreFunction;
 
 public class TestFreshenerModelRepoTool extends KijiClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestFreshenerModelRepoTool.class);
@@ -148,9 +149,8 @@ public class TestFreshenerModelRepoTool extends KijiClientTest {
     runTool(new DeployModelRepoTool(), args.toArray(new String[8]));
 
     // Fake the scoring server base URL because it is irrelevant.
-    getKiji().getMetaTable().putValue(
-        KijiModelRepository.MODEL_REPO_TABLE_NAME,
-        KijiModelRepository.SCORING_SERVER_URL_METATABLE_KEY,
+    getKiji().getSystemTable().putValue(
+        ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY,
         new byte[1]);
   }
 
