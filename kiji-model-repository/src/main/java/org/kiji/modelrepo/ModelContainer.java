@@ -310,7 +310,6 @@ public class ModelContainer {
    * the model be production ready. Attached to the table and column specified in the model
    * container.
    *
-   * @param kiji the Kiji instance in which the table the Freshener will be attached within lives.
    * @param policyClass fully qualified class name of the KijiFreshnessPolicy class to use to govern
    *     Freshening.
    * @param parameters string-string configuration parameters which will be available to the policy
@@ -339,8 +338,8 @@ public class ModelContainer {
     try {
       Preconditions.checkState(null != kiji.getSystemTable()
           .getValue(ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY),
-          "Scoring server base URL is not set, remote fresheners will not function. Set base URL in "
-              + "the Kiji system table under key: "
+          "Scoring server base URL is not set, remote fresheners will not function. Set base URL in"
+              + " the Kiji system table under key: "
               + ScoringServerScoreFunction.SCORING_SERVER_BASE_URL_SYSTEM_KEY);
 
       final String tableName = tableUri.getTable();
