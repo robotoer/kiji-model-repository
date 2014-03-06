@@ -20,7 +20,6 @@
   -->
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.kiji.modelrepo</groupId>
   <artifactId>kiji-model-repository</artifactId>
 
   <parent>
