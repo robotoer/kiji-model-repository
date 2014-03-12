@@ -19,6 +19,11 @@
 
 package org.kiji.modelrepo.tools;
 
+import java.util.List;
+
+import org.kiji.common.flags.Flag;
+import org.kiji.schema.tools.BaseTool;
+
 /**
  * Implementation of the pmml model repository tool.
  * This tool will create a model container for a Pmml model family.
@@ -33,8 +38,82 @@ package org.kiji.modelrepo.tools;
  *       --result-column=model:result \
  *       --result-record-name=MyScore \
  *       [--validate=True] \
- *       [--deploy=False]
+ *       [--attach=False]
  * </pre>
  */
-public class PmmlModelRepoTool {
+public final class PmmlModelRepoTool extends BaseTool implements KijiModelRepoTool{
+  @Flag(
+      name = "table",
+      usage = "URI of the Kiji table containing the desired model predictors and results."
+  )
+  private String mTableName = null;
+
+  @Flag(
+      name = "model-file",
+      usage = "Path to the trained PMML model file."
+  )
+  private String mModelFile = null;
+
+  @Flag(
+      name = "model-name",
+      usage = "Name of the model in the trained PMML model file."
+  )
+  private String mModelName = null;
+
+  @Flag(
+      name = "predictor-column",
+      usage = "Name of the column containing predictor records in the form \"family:column\"."
+  )
+  private String mPredictorColumn = null;
+
+  @Flag(
+      name = "result-column",
+      usage = "Name of the column to write result records to in the form \"family:column\"."
+  )
+  private String mResultColumn = null;
+
+  @Flag(
+      name = "result-record-name",
+      usage = "Name of the Avro record that will contain results."
+  )
+  private String mResultRecordName = null;
+
+  @Flag(
+      name = "validate",
+      usage = "Validate the provided values against the provided Kiji table. Default is true."
+  )
+  private boolean mValidate = true;
+
+  @Flag(
+      name = "attach",
+      usage = "Attach the created model container to the provided result column. Default is false."
+  )
+  private boolean mAttach = false;
+
+  @Override
+  protected int run(List<String> nonFlagArgs) throws Exception {
+    return 0;
+  }
+
+  @Override
+  public String getModelRepoToolName() {
+    return "pmml";
+  }
+
+  @Override
+  public String getName() {
+    return MODEL_REPO_TOOL_BASE + getModelRepoToolName();
+  }
+
+  @Override
+  public String getDescription() {
+    return
+        "Usage:\n"
+        + "";
+  }
+
+  @Override
+  public String getCategory() {
+    return MODEL_REPO_TOOL_CATEGORY;
+  }
 }
