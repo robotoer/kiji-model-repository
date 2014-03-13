@@ -95,6 +95,14 @@ public class DeployModelRepoTool extends BaseTool implements KijiModelRepoTool {
   @Flag(name="message", usage="Update message for this deployment.")
   private String mMessage = null;
 
+  @Flag(
+      name="no-jar",
+      usage="True if this model does not need a jar uploaded with it. This is useful when using "
+          + "built-in library score functions that exist in the kiji-scoring jar. Defaults to "
+          + "false."
+  )
+  private boolean mNoJar = false;
+
   @Flag(name="existing-artifact",
       usage="If specifying package location with existing artifact name.")
   private boolean mExistingArtifact = false;
